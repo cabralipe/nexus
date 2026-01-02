@@ -1,0 +1,5 @@
+{
+  "name": "EduSaaS Nexus",
+  "description": "A comprehensive SaaS School Management System featuring role-based dashboards (Admin, Teacher, Student), financial tracking, academic management, and AI-powered insights using Google Gemini.",
+  "requestFramePermissions": []
+}
