@@ -1,6 +1,7 @@
 import hashlib
 import json
 import secrets
+import string
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Optional
 
@@ -320,6 +321,7 @@ def _normalize_staff_role(value):
         return None
     mapping = {
         "teacher": UserProfile.ROLE_TEACHER,
+        "student": UserProfile.ROLE_STUDENT,
         "coordinator": UserProfile.ROLE_COORDINATOR,
         "admin": UserProfile.ROLE_ADMIN,
         "support": UserProfile.ROLE_SUPPORT,
@@ -334,6 +336,7 @@ def _normalize_staff_role(value):
 def _staff_role_label(role):
     mapping = {
         UserProfile.ROLE_TEACHER: "Teacher",
+        UserProfile.ROLE_STUDENT: "Student",
         UserProfile.ROLE_COORDINATOR: "Coordinator",
         UserProfile.ROLE_ADMIN: "Admin",
         UserProfile.ROLE_SUPPORT: "Support",
@@ -493,6 +496,17 @@ def _serialize_user(user, profile: Optional[UserProfile]) -> Dict[str, Any]:
         "admission_date": profile.admission_date.isoformat() if profile and profile.admission_date else None,
         "created_at": user.date_joined.isoformat() if user.date_joined else None,
     }
+
+
+def _link_student_profile(profile: UserProfile, student: Student) -> Optional[JsonResponse]:
+    if profile.school_id != student.school_id:
+        return JsonResponse({"error": "Student does not belong to school"}, status=400)
+    existing = UserProfile.objects.filter(student=student).exclude(id=profile.id).first()
+    if existing:
+        return JsonResponse({"error": "Student already linked to another user"}, status=409)
+    profile.student = student
+    profile.save(update_fields=["student"])
+    return None
 
 
 def _serialize_staff(profile: UserProfile) -> Dict[str, Any]:
@@ -788,6 +802,11 @@ def _serialize_audit_log(entry: AuditLog) -> Dict[str, Any]:
         "ip": entry.ip_address,
         "created_at": entry.created_at.isoformat(),
     }
+
+
+def _generate_password(length=10):
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def _serialize_justification(justification: AbsenceJustification) -> Dict[str, Any]:
@@ -1257,6 +1276,7 @@ def dashboard_student(request):
             UserProfile.ROLE_COORDINATOR,
             UserProfile.ROLE_TEACHER,
             UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_STUDENT,
         ],
     )
     if role_error:
@@ -1484,6 +1504,13 @@ def users(request):
         school=school,
         role=payload["role"],
     )
+    if payload.get("student_id"):
+        student = Student.objects.filter(id=payload.get("student_id"), school=school).first()
+        if not student:
+            return JsonResponse({"error": "Invalid student"}, status=400)
+        link_error = _link_student_profile(profile, student)
+        if link_error:
+            return link_error
     _log_action(
         auth["user"],
         school,
@@ -1557,6 +1584,16 @@ def user_detail(request, user_id: int):
             if role_error:
                 return role_error
             profile.role = payload["role"]
+        if "student_id" in payload:
+            if payload["student_id"]:
+                student = Student.objects.filter(id=payload["student_id"], school=school).first()
+                if not student:
+                    return JsonResponse({"error": "Invalid student"}, status=400)
+                link_error = _link_student_profile(profile, student)
+                if link_error:
+                    return link_error
+            else:
+                profile.student = None
         if "school_id" in payload:
             if str(school.id) != str(payload["school_id"]):
                 return JsonResponse({"error": "Forbidden"}, status=403)
@@ -1615,7 +1652,8 @@ def staff(request):
         role_error = _validate_choice(role_value, UserProfile.ROLE_CHOICES, "role")
         if role_error:
             return role_error
-    password = payload.get("password") or "password123"
+    auto_password = payload.get("auto_password", True)
+    password = payload.get("password") if not auto_password else _generate_password()
     password_error = _validate_password(password)
     if password_error:
         return password_error
@@ -1624,9 +1662,12 @@ def staff(request):
     if User.objects.filter(email=payload["email"]).exists():
         return JsonResponse({"error": "Email already exists"}, status=409)
 
-    username = payload.get("username") or payload["email"].split("@")[0]
-    if User.objects.filter(username=username).exists():
-        return JsonResponse({"error": "Username already exists"}, status=409)
+    base_username = payload.get("username") or payload["email"].split("@")[0]
+    username = base_username
+    counter = 1
+    while User.objects.filter(username=username).exists():
+        counter += 1
+        username = f"{base_username}-{counter}"
 
     name_parts = payload.get("name", "").split(" ", 1)
     first_name = name_parts[0] if name_parts else ""
@@ -1659,7 +1700,18 @@ def staff(request):
         str(profile.user_id),
         request,
     )
-    return JsonResponse({"data": _serialize_staff(profile)}, status=201)
+    return JsonResponse(
+        {
+            "data": _serialize_staff(profile),
+            "user_credentials": {
+                "username": user.username,
+                "password": password,
+                "user_id": user.id,
+                "profile_id": profile.id,
+            },
+        },
+        status=201,
+    )
 
 
 @csrf_exempt
@@ -2215,6 +2267,21 @@ def students(request):
         tuition_status=payload.get("tuition_status", ""),
         status=payload.get("status", Student.STATUS_ACTIVE),
     )
+    if payload.get("user_id") or payload.get("user_email") or payload.get("username"):
+        user_filter = Q()
+        if payload.get("user_id"):
+            user_filter |= Q(id=payload.get("user_id"))
+        if payload.get("user_email"):
+            user_filter |= Q(email=payload.get("user_email"))
+        if payload.get("username"):
+            user_filter |= Q(username=payload.get("username"))
+        user = get_user_model().objects.filter(user_filter).first()
+        if user:
+            profile = UserProfile.objects.filter(user=user, school=school).first()
+            if profile:
+                link_error = _link_student_profile(profile, student)
+                if link_error:
+                    return link_error
     for contact in payload.get("emergency_contacts", []):
         if not contact.get("name"):
             continue
@@ -2232,7 +2299,36 @@ def students(request):
         f"{student.id}",
         request,
     )
-    return JsonResponse({"data": _serialize_student(student)}, status=201)
+    user_credentials = None
+    if payload.get("auto_create_user", True):
+        User = get_user_model()
+        cpf_digits = "".join(filter(str.isdigit, student.cpf or ""))
+        base_username = cpf_digits or f"student-{student.id}"
+        username = base_username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            counter += 1
+            username = f"{base_username}-{counter}"
+        password = _generate_password()
+        email = payload.get("email") or payload.get("user_email") or ""
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+        )
+        profile = UserProfile.objects.create(
+            user=user,
+            school=school,
+            role=UserProfile.ROLE_STUDENT,
+            student=student,
+        )
+        user_credentials = {
+            "username": user.username,
+            "password": password,
+            "user_id": user.id,
+            "profile_id": profile.id,
+        }
+    return JsonResponse({"data": _serialize_student(student), "user_credentials": user_credentials}, status=201)
 
 
 @csrf_exempt

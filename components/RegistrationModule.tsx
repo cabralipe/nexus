@@ -61,6 +61,7 @@ const RegistrationModule: React.FC = () => {
     // Creation Mode State
     const [isCreatingStudent, setIsCreatingStudent] = useState(false);
     const [isCreatingClass, setIsCreatingClass] = useState(false);
+    const [createdCredentials, setCreatedCredentials] = useState<{ username: string; password: string } | null>(null);
     
     // Class Creation Specifics
     const [selectedEducationLevel, setSelectedEducationLevel] = useState('');
@@ -207,6 +208,14 @@ const RegistrationModule: React.FC = () => {
                 healthInfo: newStudent.healthInfo,
                 emergency_contacts: formData.emergencyContacts,
             });
+            if (created.user_credentials) {
+                setCreatedCredentials({
+                    username: created.user_credentials.username,
+                    password: created.user_credentials.password,
+                });
+            } else {
+                setCreatedCredentials(null);
+            }
             const createdStudent: StudentProfile = {
                 ...newStudent,
                 id: String(created.id),
@@ -556,6 +565,13 @@ const RegistrationModule: React.FC = () => {
                                     </button>
                                 </div>
                             </div>
+                            {createdCredentials && (
+                                <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 p-4 rounded-lg text-sm">
+                                    <p className="font-bold mb-1">Credenciais geradas</p>
+                                    <p>Usuario: <strong>{createdCredentials.username}</strong></p>
+                                    <p>Senha temporaria: <strong>{createdCredentials.password}</strong></p>
+                                </div>
+                            )}
                             {/* Shortened for brevity since we are just removing the enrollment tab logic */}
                              {/* ... Form fields are same as before ... */}
                                  {/* Section 1: Personal Info */}

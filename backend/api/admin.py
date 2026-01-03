@@ -37,12 +37,20 @@ from .models import (
 )
 
 
+User = get_user_model()
+
+try:
+    admin.site.unregister(User)
+except admin.sites.NotRegistered:
+    pass
+
+
 class UserProfileInline(admin.StackedInline):
     model = UserProfile
     extra = 0
 
 
-@admin.register(get_user_model())
+@admin.register(User)
 class UserAdmin(admin.ModelAdmin):
     list_display = ("id", "username", "email", "is_active", "is_staff", "last_login")
     search_fields = ("username", "email", "first_name", "last_name")

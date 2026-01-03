@@ -33,6 +33,7 @@ class UserProfile(models.Model):
     ROLE_DIRECTOR = "director"
     ROLE_COORDINATOR = "coordinator"
     ROLE_TEACHER = "teacher"
+    ROLE_STUDENT = "student"
     ROLE_STAFF = "staff"
     ROLE_FINANCE = "finance"
     ROLE_SUPPORT = "support"
@@ -42,6 +43,7 @@ class UserProfile(models.Model):
         (ROLE_DIRECTOR, "Diretor"),
         (ROLE_COORDINATOR, "Coordenador"),
         (ROLE_TEACHER, "Professor"),
+        (ROLE_STUDENT, "Aluno"),
         (ROLE_STAFF, "Equipe"),
         (ROLE_FINANCE, "Financeiro"),
         (ROLE_SUPPORT, "Suporte"),
