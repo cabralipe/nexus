@@ -68,6 +68,10 @@ const RegistrationModule: React.FC = () => {
     
     const [formData, setFormData] = useState<StudentProfile>(INITIAL_STUDENT_STATE);
     const [classFormData, setClassFormData] = useState<SchoolClass>(INITIAL_CLASS_STATE);
+    const [studentStatus, setStudentStatus] = useState<'active' | 'inactive' | 'graduated'>('active');
+    const [enrollmentCode, setEnrollmentCode] = useState('');
+    const [studentEmail, setStudentEmail] = useState('');
+    const [studentPassword, setStudentPassword] = useState('');
     
     // Temporary state for text inputs that will be arrays (allergies/meds)
     const [allergiesInput, setAllergiesInput] = useState('');
@@ -169,6 +173,10 @@ const RegistrationModule: React.FC = () => {
             setIsCreatingStudent(true);
             setSelectedStudentId(null);
             setFormData(INITIAL_STUDENT_STATE);
+            setStudentStatus('active');
+            setEnrollmentCode('');
+            setStudentEmail('');
+            setStudentPassword('');
             setAllergiesInput('');
             setMedsInput('');
         } else if (activeTab === 'classes') {
@@ -187,6 +195,14 @@ const RegistrationModule: React.FC = () => {
     const handleSaveStudent = async () => {
         const [firstName, ...rest] = formData.name.trim().split(' ');
         const lastName = rest.join(' ');
+        if (!studentEmail || !studentPassword) {
+            alert('Informe email e senha para criar o usuario do aluno.');
+            return;
+        }
+        if (studentPassword.length < 8) {
+            alert('A senha precisa ter pelo menos 8 caracteres.');
+            return;
+        }
         const newStudent: StudentProfile = {
             ...formData,
             id: Math.random().toString(36).substr(2, 9),
@@ -204,7 +220,12 @@ const RegistrationModule: React.FC = () => {
                 cpf: formData.cpf,
                 mainAddress: formData.mainAddress,
                 reserveAddress: formData.reserveAddress,
+                enrollment_code: enrollmentCode,
                 tuition_status: formData.tuitionStatus,
+                status: studentStatus,
+                email: studentEmail,
+                password: studentPassword,
+                auto_create_user: true,
                 healthInfo: newStudent.healthInfo,
                 emergency_contacts: formData.emergencyContacts,
             });
@@ -585,7 +606,177 @@ const RegistrationModule: React.FC = () => {
                                                 value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
                                             />
                                         </div>
-                                        {/* ... other fields ... */}
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Código de Matrícula</label>
+                                            <input
+                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={enrollmentCode} onChange={e => setEnrollmentCode(e.target.value)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Status do Aluno</label>
+                                            <select
+                                                className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={studentStatus}
+                                                onChange={e => setStudentStatus(e.target.value as 'active' | 'inactive' | 'graduated')}
+                                            >
+                                                <option value="active">Ativo</option>
+                                                <option value="inactive">Inativo</option>
+                                                <option value="graduated">Concluído</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Data de Nascimento</label>
+                                            <input 
+                                                type="date" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">CPF</label>
+                                            <input 
+                                                type="text" placeholder="000.000.000-00" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Status de Mensalidade</label>
+                                            <select
+                                                className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={formData.tuitionStatus}
+                                                onChange={e => setFormData({...formData, tuitionStatus: e.target.value as StudentProfile['tuitionStatus']})}
+                                            >
+                                                <option value="Paid">Em dia</option>
+                                                <option value="Pending">Pendente</option>
+                                                <option value="Late">Atrasada</option>
+                                            </select>
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Email do Aluno (para login)</label>
+                                            <input
+                                                type="email" placeholder="aluno@escola.com" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={studentEmail} onChange={e => setStudentEmail(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Senha Inicial</label>
+                                            <input
+                                                type="password" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={studentPassword} onChange={e => setStudentPassword(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Endereços</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Endereço Principal</label>
+                                            <input
+                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={formData.mainAddress} onChange={e => setFormData({...formData, mainAddress: e.target.value})}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Endereço de Reserva</label>
+                                            <input
+                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={formData.reserveAddress} onChange={e => setFormData({...formData, reserveAddress: e.target.value})}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Saúde</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Tipo Sanguíneo</label>
+                                            <input
+                                                type="text" placeholder="Ex: A+" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={formData.healthInfo.bloodType} onChange={e => updateHealthInfo('bloodType', e.target.value)}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Condições</label>
+                                            <input
+                                                type="text" placeholder="Ex: Asma" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={formData.healthInfo.conditions} onChange={e => updateHealthInfo('conditions', e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Alergias (separe por vírgula)</label>
+                                            <input
+                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={allergiesInput} onChange={e => setAllergiesInput(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Medicamentos (separe por vírgula)</label>
+                                            <input
+                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                value={medsInput} onChange={e => setMedsInput(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-4">
+                                        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Contatos de Emergência</h4>
+                                        <button
+                                            type="button"
+                                            onClick={addEmergencyContact}
+                                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                                        >
+                                            + Adicionar contato
+                                        </button>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {formData.emergencyContacts.map((contact, index) => (
+                                            <div key={`contact-${index}`} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-slate-200 rounded-lg">
+                                                <div className="md:col-span-2 flex items-center justify-between">
+                                                    <h5 className="text-sm font-semibold text-slate-700">Contato {index + 1}</h5>
+                                                    {formData.emergencyContacts.length > 1 && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeEmergencyContact(index)}
+                                                            className="text-xs text-rose-600 hover:text-rose-700"
+                                                        >
+                                                            Remover
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-700 mb-1">Nome</label>
+                                                    <input
+                                                        type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                        value={contact.name} onChange={e => updateEmergencyContact(index, 'name', e.target.value)}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-700 mb-1">Parentesco</label>
+                                                    <input
+                                                        type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                        value={contact.relation} onChange={e => updateEmergencyContact(index, 'relation', e.target.value)}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-slate-700 mb-1">Telefone</label>
+                                                    <input
+                                                        type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                        value={contact.phone} onChange={e => updateEmergencyContact(index, 'phone', e.target.value)}
+                                                    />
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-6">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={contact.isLegalGuardian}
+                                                        onChange={e => updateEmergencyContact(index, 'isLegalGuardian', e.target.checked)}
+                                                        className="h-4 w-4 text-indigo-600 border-slate-300 rounded"
+                                                    />
+                                                    <span className="text-sm text-slate-700">Responsável legal</span>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                         </div>

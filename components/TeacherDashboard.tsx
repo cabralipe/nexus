@@ -3,7 +3,11 @@ import { Calendar, CheckCircle, Clock, BookOpen, Sparkles, Send, FileText } from
 import { generateLessonPlan } from '../services/geminiService';
 import { backend } from '../services/backendService';
 
-const TeacherDashboard: React.FC = () => {
+type TeacherDashboardProps = {
+    authRole?: string | null;
+};
+
+const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ authRole }) => {
     const [lessonTopic, setLessonTopic] = useState('');
     const [generatedPlan, setGeneratedPlan] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
@@ -14,6 +18,13 @@ const TeacherDashboard: React.FC = () => {
 
     useEffect(() => {
         const loadDashboard = async () => {
+            if (!authRole) {
+                return;
+            }
+            if (!['teacher', 'coordinator'].includes(authRole)) {
+                setErrorMessage('Seu perfil atual nao tem acesso ao painel do professor.');
+                return;
+            }
             setLoadingData(true);
             setErrorMessage('');
             try {
@@ -29,7 +40,7 @@ const TeacherDashboard: React.FC = () => {
         };
 
         loadDashboard();
-    }, []);
+    }, [authRole]);
 
     const handleCreatePlan = async () => {
         if (!lessonTopic) return;

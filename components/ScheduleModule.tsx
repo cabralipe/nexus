@@ -63,13 +63,16 @@ const ScheduleModule: React.FC = () => {
     useEffect(() => {
         const loadScheduleData = async () => {
             try {
-                const [staffData, classesData, slotsData, availabilityData, schedulesData] = await Promise.all([
+                const [me, staffData, classesData, slotsData, availabilityData, schedulesData] = await Promise.all([
+                    backend.fetchMe(),
                     backend.fetchStaff(),
                     backend.fetchClassrooms(),
                     backend.fetchTimeSlots(),
                     backend.fetchAvailability(),
                     backend.fetchSchedules(),
                 ]);
+
+                const normalizedRole = String(me.role || '').toLowerCase() || null;
 
                 const teachersList: Staff[] = staffData
                     .filter((member: any) => member.role === 'Teacher')
@@ -82,8 +85,14 @@ const ScheduleModule: React.FC = () => {
                         email: member.email || '',
                         admissionDate: member.admissionDate || member.admission_date || '',
                     }));
-                setTeachers(teachersList);
-                setSelectedTeacherId(teachersList[0]?.id || null);
+                if (normalizedRole === 'teacher') {
+                    const selfTeacher = teachersList.find((teacher) => teacher.id === String(me.id));
+                    setTeachers(selfTeacher ? [selfTeacher] : []);
+                    setSelectedTeacherId(selfTeacher?.id || null);
+                } else {
+                    setTeachers(teachersList);
+                    setSelectedTeacherId(teachersList[0]?.id || null);
+                }
 
                 const allocationsByClass = await Promise.all(
                     classesData.map(async (item: any) => {
@@ -194,6 +203,10 @@ const ScheduleModule: React.FC = () => {
     const handleDeleteSlot = async (index: number) => {
         const slot = timeSlots[index];
         if (!slot) return;
+        if (!/^\d+$/.test(slot.id)) {
+            setTimeSlots(timeSlots.filter((_, i) => i !== index));
+            return;
+        }
         try {
             await backend.deleteTimeSlot(slot.id);
             const newSlots = timeSlots.filter((_, i) => i !== index);
@@ -212,6 +225,9 @@ const ScheduleModule: React.FC = () => {
         if (!selectedTeacherId) return;
         const slot = timeSlots[slotIndex];
         if (!slot) return;
+        if (!/^\d+$/.test(slot.id)) {
+            return;
+        }
 
         const key = `${selectedTeacherId}-${dayIndex}-${slotIndex}`;
         const isUnavailable = availability[selectedTeacherId]?.[dayIndex]?.includes(slotIndex);
@@ -261,6 +277,9 @@ const ScheduleModule: React.FC = () => {
         if (!selectedClassId) return;
         const slot = timeSlots[slotIndex];
         if (!slot) return;
+        if (!/^\d+$/.test(slot.id)) {
+            return;
+        }
         const key = `${selectedClassId}-${dayIndex}-${slotIndex}`;
 
         try {

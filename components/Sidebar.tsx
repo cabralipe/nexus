@@ -1,22 +1,43 @@
 import React from 'react';
 import { UserRole, ViewState } from '../types';
 import { NAV_ITEMS } from '../constants';
-import { GraduationCap, LogOut } from 'lucide-react';
+import { GraduationCap, LogOut, X } from 'lucide-react';
 
 interface SidebarProps {
   role: UserRole;
   currentView: ViewState;
   onChangeView: (view: ViewState) => void;
   onLogout: () => void;
+  isOpen: boolean;
+  onClose: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ role, currentView, onChangeView, onLogout }) => {
-  // Filter nav items could be implemented here based on Role if we had defined role-specific navs in constants
-  // For demo simplicity, we use the same structure but you would typically filter:
-  // const items = NAV_ITEMS.filter(item => item.roles.includes(role));
+export const Sidebar: React.FC<SidebarProps> = ({
+  role,
+  currentView,
+  onChangeView,
+  onLogout,
+  isOpen,
+  onClose,
+}) => {
+  const items = NAV_ITEMS.filter((item) => item.roles.includes(role));
 
   return (
-    <div className="h-screen w-64 bg-slate-900 text-white flex flex-col fixed left-0 top-0 shadow-xl z-10">
+    <>
+      <button
+        type="button"
+        onClick={onClose}
+        className={`fixed inset-0 bg-black/40 transition-opacity md:hidden ${
+          isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+        }`}
+        aria-hidden={!isOpen}
+        tabIndex={-1}
+      />
+      <div
+        className={`h-screen w-64 bg-slate-900 text-white flex flex-col fixed left-0 top-0 shadow-xl z-30 transform transition-transform md:translate-x-0 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
       <div className="p-6 flex items-center gap-3 border-b border-slate-800">
         <div className="bg-indigo-600 p-2 rounded-lg">
              <GraduationCap size={24} className="text-white" />
@@ -25,13 +46,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentView, onChangeVie
             <h1 className="font-bold text-lg tracking-tight">EduSaaS</h1>
             <p className="text-xs text-slate-400">School Management</p>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-auto text-slate-400 hover:text-white md:hidden"
+          aria-label="Fechar menu"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       <nav className="flex-1 px-4 py-6 space-y-2">
-        {NAV_ITEMS.map((item) => (
+        {items.map((item) => (
           <button
             key={item.id}
-            onClick={() => onChangeView(item.id)}
+            onClick={() => {
+              onChangeView(item.id);
+              onClose();
+            }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
               currentView === item.id
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50'
@@ -57,6 +89,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ role, currentView, onChangeVie
           Sair do Sistema
         </button>
       </div>
-    </div>
+      </div>
+    </>
   );
 };

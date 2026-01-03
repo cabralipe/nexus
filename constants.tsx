@@ -1,6 +1,6 @@
 import React from 'react';
 import { LayoutDashboard, Wallet, BookOpen, Settings, Users, MessageCircle, Activity, ClipboardCheck, GraduationCap, Package, UserPlus, Grid, CalendarClock } from 'lucide-react';
-import { ViewState, GradingConfig, InventoryItem, StudentProfile, Staff, SchoolClass } from './types';
+import { UserRole, ViewState, GradingConfig, InventoryItem, StudentProfile, Staff, SchoolClass } from './types';
 
 export const MOCK_STUDENTS = [
   { id: '1', name: 'Alice Ferreira', grade: '9A', attendance: 95, tuitionStatus: 'Paid' as const },
@@ -165,16 +165,76 @@ export const DEFAULT_GRADING_CONFIG: GradingConfig = {
 };
 
 export const NAV_ITEMS = [
-  { id: ViewState.DASHBOARD, label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
-  { id: ViewState.REGISTRATION, label: 'Cadastros', icon: <UserPlus size={20} /> },
-  { id: ViewState.CLASS_ALLOCATION, label: 'Enturmação', icon: <Grid size={20} /> },
-  { id: ViewState.SCHEDULE, label: 'Horários', icon: <CalendarClock size={20} /> },
-  { id: ViewState.ACADEMIC, label: 'Acadêmico', icon: <BookOpen size={20} /> },
-  { id: ViewState.PEDAGOGICAL, label: 'Coordenação', icon: <GraduationCap size={20} /> },
-  { id: ViewState.FINANCIAL, label: 'Financeiro', icon: <Wallet size={20} /> },
-  { id: ViewState.INVENTORY, label: 'Almoxarifado', icon: <Package size={20} /> },
-  { id: ViewState.COMMUNICATION, label: 'Comunicação', icon: <MessageCircle size={20} /> },
-  { id: ViewState.TEACHER_MONITORING, label: 'Monitoramento', icon: <Activity size={20} /> },
-  { id: ViewState.ABSENCE_JUSTIFICATION, label: 'Justificativas', icon: <ClipboardCheck size={20} /> },
-  { id: ViewState.SETTINGS, label: 'Configurações', icon: <Settings size={20} /> },
+  {
+    id: ViewState.DASHBOARD,
+    label: 'Dashboard',
+    icon: <LayoutDashboard size={20} />,
+    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+  },
+  {
+    id: ViewState.REGISTRATION,
+    label: 'Cadastros',
+    icon: <UserPlus size={20} />,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: ViewState.CLASS_ALLOCATION,
+    label: 'Enturmação',
+    icon: <Grid size={20} />,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: ViewState.SCHEDULE,
+    label: 'Horários',
+    icon: <CalendarClock size={20} />,
+    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+  },
+  {
+    id: ViewState.ACADEMIC,
+    label: 'Acadêmico',
+    icon: <BookOpen size={20} />,
+    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+  },
+  {
+    id: ViewState.PEDAGOGICAL,
+    label: 'Coordenação',
+    icon: <GraduationCap size={20} />,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: ViewState.FINANCIAL,
+    label: 'Financeiro',
+    icon: <Wallet size={20} />,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: ViewState.INVENTORY,
+    label: 'Almoxarifado',
+    icon: <Package size={20} />,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: ViewState.COMMUNICATION,
+    label: 'Comunicação',
+    icon: <MessageCircle size={20} />,
+    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+  },
+  {
+    id: ViewState.TEACHER_MONITORING,
+    label: 'Monitoramento',
+    icon: <Activity size={20} />,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: ViewState.ABSENCE_JUSTIFICATION,
+    label: 'Justificativas',
+    icon: <ClipboardCheck size={20} />,
+    roles: [UserRole.ADMIN, UserRole.TEACHER],
+  },
+  {
+    id: ViewState.SETTINGS,
+    label: 'Configurações',
+    icon: <Settings size={20} />,
+    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+  },
 ];

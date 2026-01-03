@@ -66,7 +66,11 @@ def _parse_json(request) -> Dict[str, Any]:
 
 
 def _missing_fields(data: Dict[str, Any], required_fields) -> Dict[str, Any]:
-    missing = [field for field in required_fields if not data.get(field)]
+    missing = [
+        field
+        for field in required_fields
+        if field not in data or data.get(field) is None or data.get(field) == ""
+    ]
     if missing:
         return {
             "error": "Missing required fields",
@@ -2309,7 +2313,10 @@ def students(request):
         while User.objects.filter(username=username).exists():
             counter += 1
             username = f"{base_username}-{counter}"
-        password = _generate_password()
+        password = payload.get("password") or _generate_password()
+        password_error = _validate_password(password)
+        if password_error:
+            return password_error
         email = payload.get("email") or payload.get("user_email") or ""
         user = User.objects.create_user(
             username=username,
@@ -5169,6 +5176,10 @@ def availability(request):
     if error:
         return error
 
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+    if not profile:
+        return JsonResponse({"error": "User profile not found"}, status=404)
+
     if request.method == "GET":
         items = TeacherAvailability.objects.filter(teacher__school=school).select_related(
             "teacher", "time_slot"
@@ -5189,7 +5200,7 @@ def availability(request):
             UserProfile.ROLE_ADMIN,
             UserProfile.ROLE_DIRECTOR,
             UserProfile.ROLE_COORDINATOR,
-            UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_TEACHER,
         ],
     )
     if role_error:
@@ -5204,15 +5215,26 @@ def availability(request):
     if day_error:
         return day_error
 
-    teacher = UserProfile.objects.filter(
-        Q(user_id=payload["teacher_id"]) | Q(id=payload["teacher_id"]),
-        school=school,
-        role=UserProfile.ROLE_TEACHER,
-    ).first()
+    if profile.role == UserProfile.ROLE_TEACHER:
+        teacher = profile
+    else:
+        try:
+            teacher_id = int(payload["teacher_id"])
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "Invalid teacher"}, status=400)
+        teacher = UserProfile.objects.filter(
+            Q(user_id=teacher_id) | Q(id=teacher_id),
+            school=school,
+            role=UserProfile.ROLE_TEACHER,
+        ).first()
     if not teacher:
         return JsonResponse({"error": "Invalid teacher"}, status=400)
 
-    slot = TimeSlot.objects.filter(id=payload["time_slot_id"], school=school).first()
+    try:
+        slot_id = int(payload["time_slot_id"])
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Invalid time slot"}, status=400)
+    slot = TimeSlot.objects.filter(id=slot_id, school=school).first()
     if not slot:
         return JsonResponse({"error": "Invalid time slot"}, status=400)
 
@@ -5253,11 +5275,17 @@ def availability_detail(request, availability_id: int):
             UserProfile.ROLE_ADMIN,
             UserProfile.ROLE_DIRECTOR,
             UserProfile.ROLE_COORDINATOR,
-            UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_TEACHER,
         ],
     )
     if role_error:
         return role_error
+    if availability_record.teacher.user_id != auth["user"].id:
+        teacher_role = UserProfile.objects.filter(
+            user=auth["user"], school=school, role=UserProfile.ROLE_TEACHER
+        ).exists()
+        if teacher_role:
+            return JsonResponse({"error": "Forbidden"}, status=403)
 
     if request.method == "DELETE":
         availability_record.delete()
@@ -5338,18 +5366,30 @@ def schedules(request):
     if day_error:
         return day_error
 
-    classroom = Classroom.objects.filter(id=payload["classroom_id"], school=school).first()
+    try:
+        classroom_id = int(payload["classroom_id"])
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Invalid classroom"}, status=400)
+    classroom = Classroom.objects.filter(id=classroom_id, school=school).first()
     if not classroom:
         return JsonResponse({"error": "Invalid classroom"}, status=400)
 
-    slot = TimeSlot.objects.filter(id=payload["time_slot_id"], school=school).first()
+    try:
+        slot_id = int(payload["time_slot_id"])
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "Invalid time slot"}, status=400)
+    slot = TimeSlot.objects.filter(id=slot_id, school=school).first()
     if not slot:
         return JsonResponse({"error": "Invalid time slot"}, status=400)
 
     teacher = None
     if payload.get("teacher_id"):
+        try:
+            teacher_id = int(payload["teacher_id"])
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "Invalid teacher"}, status=400)
         teacher = UserProfile.objects.filter(
-            Q(user_id=payload["teacher_id"]) | Q(id=payload["teacher_id"]),
+            Q(user_id=teacher_id) | Q(id=teacher_id),
             school=school,
             role=UserProfile.ROLE_TEACHER,
         ).first()
@@ -5437,7 +5477,11 @@ def schedule_detail(request, schedule_id: int):
             return day_error
         entry.day_of_week = day
     if "time_slot_id" in payload:
-        slot = TimeSlot.objects.filter(id=payload["time_slot_id"], school=school).first()
+        try:
+            slot_id = int(payload["time_slot_id"])
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "Invalid time slot"}, status=400)
+        slot = TimeSlot.objects.filter(id=slot_id, school=school).first()
         if not slot:
             return JsonResponse({"error": "Invalid time slot"}, status=400)
         entry.time_slot = slot
@@ -5445,8 +5489,12 @@ def schedule_detail(request, schedule_id: int):
         entry.subject = payload.get("subject", "")
     if "teacher_id" in payload:
         if payload.get("teacher_id"):
+            try:
+                teacher_id = int(payload["teacher_id"])
+            except (TypeError, ValueError):
+                return JsonResponse({"error": "Invalid teacher"}, status=400)
             teacher = UserProfile.objects.filter(
-                Q(user_id=payload["teacher_id"]) | Q(id=payload["teacher_id"]),
+                Q(user_id=teacher_id) | Q(id=teacher_id),
                 school=school,
                 role=UserProfile.ROLE_TEACHER,
             ).first()
