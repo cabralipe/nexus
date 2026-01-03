@@ -1,33 +1,25 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { DollarSign, Users, AlertTriangle, TrendingUp, Sparkles, FileText, Printer, ArrowLeft, Sliders, Calculator, Save, Settings, CheckCircle } from 'lucide-react';
 import { StatCard } from './StatCard';
-import { MOCK_TRANSACTIONS, MOCK_STUDENTS, DEFAULT_GRADING_CONFIG } from '../constants';
+import { DEFAULT_GRADING_CONFIG } from '../constants';
 import { analyzeFinancialHealth, generateSchoolDocument } from '../services/geminiService';
 import { GradingConfig } from '../types';
+import { backend } from '../services/backendService';
 
 const COLORS = ['#4F46E5', '#EF4444', '#10B981', '#F59E0B'];
-
-const FINANCIAL_DATA = [
-  { name: 'Jan', income: 40000, expense: 24000 },
-  { name: 'Feb', income: 30000, expense: 13980 },
-  { name: 'Mar', income: 45000, expense: 28000 },
-  { name: 'Apr', income: 27800, expense: 39080 },
-  { name: 'May', income: 18900, expense: 48000 },
-  { name: 'Jun', income: 23900, expense: 38000 },
-];
-
-const ENROLLMENT_DATA = [
-  { name: 'Fundamental I', value: 400 },
-  { name: 'Fundamental II', value: 300 },
-  { name: 'Ensino Médio', value: 300 },
-  { name: 'Infantil', value: 200 },
-];
 
 const AdminDashboard: React.FC = () => {
   const [viewMode, setViewMode] = useState<'overview' | 'documents' | 'grading'>('overview');
   const [insight, setInsight] = useState<string>("");
   const [loadingAi, setLoadingAi] = useState(false);
+  const [loadingData, setLoadingData] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [financeData, setFinanceData] = useState<any[]>([]);
+  const [enrollmentData, setEnrollmentData] = useState<any[]>([]);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
+  const [dashboard, setDashboard] = useState<any | null>(null);
 
   // Document State
   const [selectedStudent, setSelectedStudent] = useState('');
@@ -40,9 +32,61 @@ const AdminDashboard: React.FC = () => {
   const [gradingConfig, setGradingConfig] = useState<GradingConfig>(DEFAULT_GRADING_CONFIG);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
+  useEffect(() => {
+    const loadData = async () => {
+      setLoadingData(true);
+      setErrorMessage('');
+      try {
+        const [dashboardData, transactionsData, studentsData, gradingData] = await Promise.all([
+          backend.fetchAdminDashboard(),
+          backend.fetchTransactions(),
+          backend.fetchStudents(),
+          backend.fetchGradingConfig().catch(() => null),
+        ]);
+        setDashboard(dashboardData);
+        setFinanceData(dashboardData?.finance_series || []);
+        setEnrollmentData(dashboardData?.enrollment_by_grade || []);
+        setTransactions(transactionsData || []);
+        setStudents(studentsData || []);
+        if (gradingData) {
+          setGradingConfig({
+            system: gradingData.system,
+            calculationMethod: gradingData.calculation_method || gradingData.calculationMethod,
+            minPassingGrade: Number(gradingData.min_passing_grade || gradingData.minPassingGrade || 6),
+            weights: gradingData.weights || { exam: 60, activities: 30, participation: 10 },
+            recoveryRule: gradingData.recovery_rule || gradingData.recoveryRule || '',
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load admin dashboard', error);
+        setErrorMessage('Nao foi possivel carregar o painel.');
+      } finally {
+        setLoadingData(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  const stats = useMemo(() => {
+    const income = Number(dashboard?.finance_month?.income || 0);
+    const expense = Number(dashboard?.finance_month?.expense || 0);
+    const net = income - expense;
+    return {
+      income,
+      students: dashboard?.counts?.students || 0,
+      delinquency: dashboard?.invoices?.delinquency_rate || 0,
+      net,
+    };
+  }, [dashboard]);
+
   const handleGenerateInsight = async () => {
     setLoadingAi(true);
-    const summary = JSON.stringify({ transactions: MOCK_TRANSACTIONS.slice(0, 3), totalStudents: 1200, delinquencyRate: "5%" });
+    const summary = JSON.stringify({
+      transactions: transactions.slice(0, 3),
+      totalStudents: dashboard?.counts?.students || 0,
+      delinquencyRate: `${dashboard?.invoices?.delinquency_rate || 0}%`,
+    });
     const result = await analyzeFinancialHealth(summary);
     setInsight(result);
     setLoadingAi(false);
@@ -56,10 +100,21 @@ const AdminDashboard: React.FC = () => {
     setIsGeneratingDoc(false);
   };
 
-  const handleSaveConfig = () => {
+  const handleSaveConfig = async () => {
     setIsSavingConfig(true);
-    // Simulate API call
-    setTimeout(() => setIsSavingConfig(false), 1000);
+    try {
+      await backend.updateGradingConfig({
+        system: gradingConfig.system,
+        calculation_method: gradingConfig.calculationMethod,
+        min_passing_grade: gradingConfig.minPassingGrade,
+        weights: gradingConfig.weights,
+        recovery_rule: gradingConfig.recoveryRule,
+      });
+    } catch (error) {
+      console.error('Failed to save grading config', error);
+    } finally {
+      setIsSavingConfig(false);
+    }
   };
 
   const handleWeightChange = (key: keyof GradingConfig['weights'], value: number) => {
@@ -140,12 +195,18 @@ const AdminDashboard: React.FC = () => {
                 </div>
             )}
 
+            {errorMessage && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-lg">
+                    {errorMessage}
+                </div>
+            )}
+
             {/* Stat Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard title="Receita Mensal" value="R$ 145.000" trend="+12%" trendUp={true} icon={<DollarSign size={24} />} color="bg-indigo-500" />
-                <StatCard title="Alunos Ativos" value="1,245" trend="+3%" trendUp={true} icon={<Users size={24} />} color="bg-blue-500" />
-                <StatCard title="Inadimplência" value="4.2%" trend="-0.5%" trendUp={true} icon={<AlertTriangle size={24} />} color="bg-rose-500" />
-                <StatCard title="Lucro Líquido" value="R$ 32.500" trend="+8%" trendUp={true} icon={<TrendingUp size={24} />} color="bg-emerald-500" />
+                <StatCard title="Receita Mensal" value={`R$ ${stats.income.toLocaleString('pt-BR')}`} trend="Atual" trendUp={true} icon={<DollarSign size={24} />} color="bg-indigo-500" />
+                <StatCard title="Alunos Ativos" value={`${stats.students}`} trend="Atual" trendUp={true} icon={<Users size={24} />} color="bg-blue-500" />
+                <StatCard title="Inadimplência" value={`${stats.delinquency}%`} trend="Atual" trendUp={false} icon={<AlertTriangle size={24} />} color="bg-rose-500" />
+                <StatCard title="Lucro Líquido" value={`R$ ${stats.net.toLocaleString('pt-BR')}`} trend="Atual" trendUp={stats.net >= 0} icon={<TrendingUp size={24} />} color="bg-emerald-500" />
             </div>
 
             {/* Charts Row */}
@@ -154,7 +215,7 @@ const AdminDashboard: React.FC = () => {
                 <h3 className="text-lg font-semibold text-slate-800 mb-4">Fluxo de Caixa (Semestral)</h3>
                 <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={FINANCIAL_DATA}>
+                    <BarChart data={financeData}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                         <XAxis dataKey="name" axisLine={false} tickLine={false} />
                         <YAxis axisLine={false} tickLine={false} />
@@ -171,8 +232,8 @@ const AdminDashboard: React.FC = () => {
                 <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                        <Pie data={ENROLLMENT_DATA} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
-                        {ENROLLMENT_DATA.map((entry, index) => (
+                        <Pie data={enrollmentData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                        {enrollmentData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                         </Pie>
@@ -180,7 +241,7 @@ const AdminDashboard: React.FC = () => {
                     </PieChart>
                     </ResponsiveContainer>
                     <div className="mt-4 space-y-2">
-                        {ENROLLMENT_DATA.map((item, idx) => (
+                        {enrollmentData.map((item, idx) => (
                             <div key={item.name} className="flex items-center justify-between text-sm">
                                 <div className="flex items-center gap-2">
                                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
@@ -209,7 +270,7 @@ const AdminDashboard: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            {MOCK_TRANSACTIONS.map((t) => (
+                            {transactions.map((t) => (
                                 <tr key={t.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
                                     <td className="py-3 text-slate-800 font-medium">{t.description}</td>
                                     <td className="py-3 text-slate-500">{t.category}</td>
@@ -409,8 +470,10 @@ const AdminDashboard: React.FC = () => {
                                 onChange={(e) => setSelectedStudent(e.target.value)}
                             >
                                 <option value="">Selecione...</option>
-                                {MOCK_STUDENTS.map(s => (
-                                    <option key={s.id} value={s.name}>{s.name} - {s.grade}</option>
+                                {students.map((s: any) => (
+                                    <option key={s.id} value={`${s.first_name} ${s.last_name}`.trim()}>
+                                        {`${s.first_name} ${s.last_name}`.trim()} - {s.grade || s.gradeLevel || '—'}
+                                    </option>
                                 ))}
                             </select>
                         </div>

@@ -1,12 +1,35 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Calendar, CheckCircle, Clock, BookOpen, Sparkles, Send, FileText } from 'lucide-react';
-import { MOCK_CLASSES } from '../constants';
 import { generateLessonPlan } from '../services/geminiService';
+import { backend } from '../services/backendService';
 
 const TeacherDashboard: React.FC = () => {
     const [lessonTopic, setLessonTopic] = useState('');
     const [generatedPlan, setGeneratedPlan] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [todayClasses, setTodayClasses] = useState<any[]>([]);
+    const [pendingDiary, setPendingDiary] = useState(0);
+    const [loadingData, setLoadingData] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
+
+    useEffect(() => {
+        const loadDashboard = async () => {
+            setLoadingData(true);
+            setErrorMessage('');
+            try {
+                const data = await backend.fetchTeacherDashboard();
+                setTodayClasses(data.today_schedule || []);
+                setPendingDiary(data.counts?.pending_diary || 0);
+            } catch (error) {
+                console.error('Failed to load teacher dashboard', error);
+                setErrorMessage('Nao foi possivel carregar o painel do professor.');
+            } finally {
+                setLoadingData(false);
+            }
+        };
+
+        loadDashboard();
+    }, []);
 
     const handleCreatePlan = async () => {
         if (!lessonTopic) return;
@@ -25,6 +48,12 @@ const TeacherDashboard: React.FC = () => {
                 </div>
             </div>
 
+            {errorMessage && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
+                    {errorMessage}
+                </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Schedule Column */}
                 <div className="lg:col-span-2 space-y-6">
@@ -34,18 +63,22 @@ const TeacherDashboard: React.FC = () => {
                             Aulas de Hoje
                         </h3>
                         <div className="space-y-4">
-                            {MOCK_CLASSES.map((cls) => (
+                            {loadingData ? (
+                                <p className="text-sm text-slate-500">Carregando aulas...</p>
+                            ) : todayClasses.length === 0 ? (
+                                <p className="text-sm text-slate-500">Nenhuma aula registrada para hoje.</p>
+                            ) : todayClasses.map((cls) => (
                                 <div key={cls.id} className="flex items-start p-4 bg-slate-50 rounded-lg border border-slate-200 hover:border-indigo-200 transition-colors">
                                     <div className="min-w-[100px] border-r border-slate-200 pr-4 mr-4">
                                         <div className="flex items-center text-slate-800 font-bold mb-1">
                                             <Clock size={16} className="mr-2 text-indigo-500" />
-                                            {cls.time.split(' - ')[0]}
+                                            {String(cls.time).split(' - ')[0]}
                                         </div>
                                         <div className="text-xs text-slate-500">{cls.room}</div>
                                     </div>
                                     <div className="flex-1">
                                         <h4 className="font-bold text-slate-800">{cls.subject}</h4>
-                                        <p className="text-sm text-slate-600 mt-1">Tópico: {cls.topic}</p>
+                                        <p className="text-sm text-slate-600 mt-1">Tópico: Aula do dia</p>
                                     </div>
                                     <div className="flex flex-col gap-2">
                                         <button className="px-3 py-1 bg-white border border-slate-300 text-slate-600 text-xs rounded hover:bg-slate-100">
@@ -69,12 +102,12 @@ const TeacherDashboard: React.FC = () => {
                             </h3>
                             <ul className="space-y-2 text-sm text-slate-600 mt-3">
                                 <li className="flex justify-between">
-                                    <span>Prova de Álgebra (9A)</span>
-                                    <span className="font-bold text-rose-500">12 pendentes</span>
+                                    <span>Diarios pendentes</span>
+                                    <span className="font-bold text-rose-500">{pendingDiary}</span>
                                 </li>
                                 <li className="flex justify-between">
-                                    <span>Trabalho de História (8B)</span>
-                                    <span className="font-bold text-emerald-600">Concluído</span>
+                                    <span>Atualizacao semanal</span>
+                                    <span className="font-bold text-emerald-600">Em dia</span>
                                 </li>
                             </ul>
                         </div>
@@ -83,7 +116,7 @@ const TeacherDashboard: React.FC = () => {
                                 <FileText size={18} className="text-blue-500" />
                                 Diários em Aberto
                             </h3>
-                            <p className="text-sm text-slate-500 mt-2">Você tem 2 diários de classe da semana passada para finalizar o registro.</p>
+                            <p className="text-sm text-slate-500 mt-2">Você tem {pendingDiary} diários para finalizar o registro.</p>
                         </div>
                     </div>
                 </div>

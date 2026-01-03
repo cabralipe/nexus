@@ -303,10 +303,28 @@ const PedagogicalCoordination: React.FC = () => {
                             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 text-sm">
                                 <div className="font-bold text-slate-700 mb-1">{selectedExam.title}</div>
                                 <div className="text-slate-500 mb-2">Enviado em: {new Date(selectedExam.submittedDate).toLocaleDateString('pt-BR')}</div>
-                                <div className="flex items-center gap-2 text-indigo-600 cursor-pointer hover:underline mb-2">
-                                    <FileText size={16} />
-                                    <span>Baixar Arquivo da Prova.pdf</span>
-                                </div>
+                                {selectedExam.attachments && selectedExam.attachments.length === 0 && (
+                                    <div className="flex items-center gap-2 text-slate-400 mb-2">
+                                        <FileText size={16} />
+                                        <span>Nenhum anexo enviado.</span>
+                                    </div>
+                                )}
+                                {selectedExam.attachments && selectedExam.attachments.length > 0 && (
+                                    <div className="mt-2 space-y-2">
+                                        {selectedExam.attachments.map((attachment: any) => (
+                                            <a
+                                                key={attachment.id}
+                                                href={attachment.url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="flex items-center gap-2 text-indigo-600 hover:underline text-xs"
+                                            >
+                                                <FileText size={14} />
+                                                {attachment.original_name || 'Arquivo'}
+                                            </a>
+                                        ))}
+                                    </div>
+                                )}
                                 {selectedExam.feedback && (
                                     <div className="mt-3 pt-3 border-t border-slate-200">
                                         <span className="text-xs font-bold text-slate-500 uppercase">Último Parecer:</span>

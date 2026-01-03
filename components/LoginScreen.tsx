@@ -3,7 +3,9 @@ import { GraduationCap, Lock, Mail, ShieldCheck } from 'lucide-react';
 import { UserRole } from '../types';
 
 interface LoginScreenProps {
-  onLogin: (role: UserRole) => void;
+  onLogin: (payload: { usernameOrEmail: string; password: string; roleFallback: UserRole }) => void;
+  errorMessage?: string;
+  isLoading?: boolean;
 }
 
 const roleOptions = [
@@ -12,8 +14,10 @@ const roleOptions = [
   { value: UserRole.STUDENT, label: 'Aluno(a)' },
 ];
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, errorMessage, isLoading }) => {
   const [role, setRole] = useState<UserRole>(UserRole.ADMIN);
+  const [usernameOrEmail, setUsernameOrEmail] = useState('');
+  const [password, setPassword] = useState('');
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center px-6 py-12 relative overflow-hidden">
@@ -71,7 +75,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
             className="mt-8 space-y-5"
             onSubmit={(event) => {
               event.preventDefault();
-              onLogin(role);
+              onLogin({ usernameOrEmail, password, roleFallback: role });
             }}
           >
             <label className="block">
@@ -82,6 +86,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   type="email"
                   required
                   placeholder="voce@escola.com"
+                  value={usernameOrEmail}
+                  onChange={(event) => setUsernameOrEmail(event.target.value)}
                   className="w-full bg-transparent text-sm text-slate-200 placeholder:text-slate-600 outline-none"
                 />
               </div>
@@ -95,6 +101,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
                   type="password"
                   required
                   placeholder="Sua senha"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
                   className="w-full bg-transparent text-sm text-slate-200 placeholder:text-slate-600 outline-none"
                 />
               </div>
@@ -127,11 +135,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin }) => {
 
             <button
               type="submit"
-              className="w-full rounded-2xl bg-indigo-500 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-400 transition-colors"
+              disabled={isLoading}
+              className="w-full rounded-2xl bg-indigo-500 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-400 transition-colors disabled:opacity-70"
             >
-              Entrar no painel
+              {isLoading ? 'Entrando...' : 'Entrar no painel'}
             </button>
           </form>
+
+          {errorMessage && (
+            <p className="mt-4 text-xs text-rose-300">{errorMessage}</p>
+          )}
 
           <p className="mt-6 text-xs text-slate-500">
             Precisa de ajuda? Fale com a secretaria ou com o suporte interno.

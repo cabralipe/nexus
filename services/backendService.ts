@@ -3,6 +3,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000
 type RequestOptions = {
   method?: string;
   body?: Record<string, unknown> | null;
+  skipAuth?: boolean;
 };
 
 const getAuthToken = (): string | null => {
@@ -11,9 +12,11 @@ const getAuthToken = (): string | null => {
 
 const requestJson = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  const token = getAuthToken();
-  if (token) {
-    headers.Authorization = `Token ${token}`;
+  if (!options.skipAuth) {
+    const token = getAuthToken();
+    if (token) {
+      headers.Authorization = `Token ${token}`;
+    }
   }
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -33,6 +36,21 @@ const requestJson = async <T>(path: string, options: RequestOptions = {}): Promi
 const withPagination = <T>(data: { data: T[] }): T[] => data.data || [];
 
 export const backend = {
+  async login(usernameOrEmail: string, password: string) {
+    return requestJson<{ token: string; user: any }>("/auth/login/", {
+      method: "POST",
+      body: { username_or_email: usernameOrEmail, password },
+      skipAuth: true,
+    });
+  },
+  async logout() {
+    return requestJson<{ success: boolean }>("/auth/logout/", { method: "POST" });
+  },
+  async fetchMe() {
+    return requestJson<{ id: string; role: string; email: string; school?: any; student_id?: string | number }>(
+      "/auth/me/"
+    );
+  },
   async fetchStudents() {
     const data = await requestJson<{ data: any[] }>("/students/?page_size=200");
     return withPagination(data);
@@ -401,6 +419,36 @@ export const backend = {
   },
   async fetchTeacherActivities() {
     return requestJson<{ summary: any; data: any[] }>("/teachers/activities/");
+  },
+  async fetchAdminDashboard() {
+    return requestJson<{
+      counts: any;
+      invoices: any;
+      finance_month: any;
+      finance_series: any[];
+      enrollment_by_grade: any[];
+      attendance_today: any;
+      recent_notices: any[];
+    }>("/dashboards/admin/");
+  },
+  async fetchTeacherDashboard() {
+    return requestJson<{
+      counts: any;
+      schedule: any[];
+      today_schedule: any[];
+      recent_notices: any[];
+    }>("/dashboards/teacher/");
+  },
+  async fetchStudentDashboard(studentId: string) {
+    return requestJson<{
+      student: any;
+      attendance: any;
+      grades: any;
+      invoices: any[];
+      next_invoice: any | null;
+      upcoming_events: any[];
+      recent_notices: any[];
+    }>(`/dashboards/student/?student_id=${studentId}`);
   },
   async fetchAuditLogs(params: Record<string, string> = {}) {
     const query = new URLSearchParams(params).toString();

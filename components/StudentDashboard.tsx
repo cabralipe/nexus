@@ -1,12 +1,52 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BookOpen, Calendar, Clock, Award, TrendingUp, HelpCircle, Send } from 'lucide-react';
 import { StatCard } from './StatCard';
 import { generateInsight } from '../services/geminiService';
+import { backend } from '../services/backendService';
 
 const StudentDashboard: React.FC = () => {
     const [question, setQuestion] = useState('');
     const [aiResponse, setAiResponse] = useState('');
     const [loading, setLoading] = useState(false);
+    const [dashboard, setDashboard] = useState<any | null>(null);
+    const [loadingData, setLoadingData] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
+    const [studentName, setStudentName] = useState('Aluno');
+
+    useEffect(() => {
+        const loadDashboard = async () => {
+            setLoadingData(true);
+            setErrorMessage('');
+            try {
+                const me = await backend.fetchMe();
+                if (me.student_id) {
+                    const data = await backend.fetchStudentDashboard(String(me.student_id));
+                    setDashboard(data);
+                    const student = data.student || {};
+                    const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim();
+                    setStudentName(fullName || 'Aluno');
+                } else {
+                    const students = await backend.fetchStudents();
+                    if (!students.length) {
+                        setLoadingData(false);
+                        return;
+                    }
+                    const student = students[0];
+                    const data = await backend.fetchStudentDashboard(String(student.id));
+                    setDashboard(data);
+                    const fullName = `${student.first_name || ''} ${student.last_name || ''}`.trim();
+                    setStudentName(fullName || 'Aluno');
+                }
+            } catch (error) {
+                console.error('Failed to load student dashboard', error);
+                setErrorMessage('Nao foi possivel carregar o painel do aluno.');
+            } finally {
+                setLoadingData(false);
+            }
+        };
+
+        loadDashboard();
+    }, []);
 
     const handleAskAi = async () => {
         if (!question) return;
@@ -20,31 +60,37 @@ const StudentDashboard: React.FC = () => {
     return (
         <div className="space-y-6">
             <div>
-                <h2 className="text-2xl font-bold text-slate-800">Olá, Alice! 👋</h2>
+                <h2 className="text-2xl font-bold text-slate-800">Olá, {studentName}! 👋</h2>
                 <p className="text-slate-500">Aqui está o resumo dos seus estudos hoje.</p>
             </div>
+
+            {errorMessage && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
+                    {errorMessage}
+                </div>
+            )}
 
             {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard 
                     title="Média Geral" 
-                    value="8.7" 
-                    trend="+0.2" 
+                    value={dashboard?.grades?.average_final ?? '—'} 
+                    trend="Atual" 
                     trendUp={true} 
                     icon={<Award size={24} />} 
                     color="bg-purple-500" 
                 />
                 <StatCard 
                     title="Frequência" 
-                    value="95%" 
-                    trend="Estável" 
+                    value={`${Math.round(((dashboard?.attendance?.present || 0) / Math.max(1, (dashboard?.attendance?.present || 0) + (dashboard?.attendance?.absent || 0) + (dashboard?.attendance?.excused || 0))) * 100)}%`} 
+                    trend="Atual" 
                     trendUp={true} 
                     icon={<Clock size={24} />} 
                     color="bg-blue-500" 
                 />
                 <StatCard 
                     title="Próxima Mensalidade" 
-                    value="Em Dia" 
+                    value={dashboard?.next_invoice?.due_date ? `Vence ${dashboard.next_invoice.due_date}` : 'Em dia'} 
                     icon={<TrendingUp size={24} />} 
                     color="bg-emerald-500" 
                 />
@@ -59,16 +105,16 @@ const StudentDashboard: React.FC = () => {
                             Próximas Provas e Entregas
                         </h3>
                         <div className="space-y-3">
-                            {[
-                                { date: '20 Out', subject: 'Matemática', type: 'Prova Bimestral', status: 'Agendada' },
-                                { date: '22 Out', subject: 'Geografia', type: 'Trabalho em Grupo', status: 'Pendente' },
-                                { date: '25 Out', subject: 'Português', type: 'Redação', status: 'Pendente' },
-                            ].map((item, idx) => (
-                                <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
+                            {loadingData ? (
+                                <p className="text-sm text-slate-500">Carregando eventos...</p>
+                            ) : (dashboard?.upcoming_events || []).length === 0 ? (
+                                <p className="text-sm text-slate-500">Nenhum evento cadastrado.</p>
+                            ) : (dashboard?.upcoming_events || []).map((item: any, idx: number) => (
+                                <div key={`${item.subject}-${idx}`} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100">
                                     <div className="flex items-center gap-4">
                                         <div className="bg-white border border-slate-200 rounded px-2 py-1 text-center min-w-[60px]">
-                                            <div className="text-xs text-slate-500 uppercase">{item.date.split(' ')[1]}</div>
-                                            <div className="text-lg font-bold text-slate-800">{item.date.split(' ')[0]}</div>
+                                            <div className="text-xs text-slate-500 uppercase">{item.date ? item.date.split('-')[1] : '--'}</div>
+                                            <div className="text-lg font-bold text-slate-800">{item.date ? item.date.split('-')[2] : '--'}</div>
                                         </div>
                                         <div>
                                             <h4 className="font-semibold text-slate-800">{item.subject}</h4>
@@ -76,7 +122,7 @@ const StudentDashboard: React.FC = () => {
                                         </div>
                                     </div>
                                     <span className={`text-xs px-2 py-1 rounded font-medium ${
-                                        item.status === 'Agendada' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'
+                                        item.status === 'Approved' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'
                                     }`}>
                                         {item.status}
                                     </span>

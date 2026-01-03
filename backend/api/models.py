@@ -49,6 +49,13 @@ class UserProfile(models.Model):
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     school = models.ForeignKey(School, on_delete=models.SET_NULL, null=True, blank=True)
+    student = models.OneToOneField(
+        "Student",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="profile",
+    )
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default=ROLE_STAFF)
     department = models.CharField(max_length=120, blank=True)
     phone = models.CharField(max_length=30, blank=True)

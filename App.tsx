@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import AdminDashboard from './components/AdminDashboard';
 import TeacherDashboard from './components/TeacherDashboard';
@@ -17,11 +17,27 @@ import ScheduleModule from './components/ScheduleModule';
 import LoginScreen from './components/LoginScreen';
 import { UserRole, ViewState } from './types';
 import { Bell, Search, UserCircle } from 'lucide-react';
+import { backend } from './services/backendService';
 
 const App: React.FC = () => {
   const [userRole, setUserRole] = useState<UserRole>(UserRole.ADMIN);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  const roleMapping = useMemo(() => {
+    return {
+      admin: UserRole.ADMIN,
+      director: UserRole.ADMIN,
+      coordinator: UserRole.ADMIN,
+      finance: UserRole.ADMIN,
+      staff: UserRole.ADMIN,
+      support: UserRole.ADMIN,
+      teacher: UserRole.TEACHER,
+      student: UserRole.STUDENT,
+    } as Record<string, UserRole>;
+  }, []);
 
   // Mock Login/Role Switch functionality for SaaS Demo
   const switchRole = (role: UserRole) => {
@@ -92,13 +108,49 @@ const App: React.FC = () => {
     );
   };
 
+  useEffect(() => {
+    const bootstrap = async () => {
+      const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+      if (!token) return;
+      setAuthLoading(true);
+      try {
+        const me = await backend.fetchMe();
+        const normalizedRole = roleMapping[String(me.role || '').toLowerCase()] || UserRole.ADMIN;
+        setUserRole(normalizedRole);
+        setIsAuthenticated(true);
+      } catch (error) {
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('token');
+        setIsAuthenticated(false);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+    bootstrap();
+  }, [roleMapping]);
+
   if (!isAuthenticated) {
     return (
       <LoginScreen
-        onLogin={(role) => {
-          setUserRole(role);
-          setIsAuthenticated(true);
-          setCurrentView(ViewState.DASHBOARD);
+        errorMessage={authError}
+        isLoading={authLoading}
+        onLogin={async ({ usernameOrEmail, password, roleFallback }) => {
+          setAuthLoading(true);
+          setAuthError('');
+          try {
+            const response = await backend.login(usernameOrEmail, password);
+            localStorage.setItem('authToken', response.token);
+            const normalizedRole =
+              roleMapping[String(response.user?.role || '').toLowerCase()] || roleFallback;
+            setUserRole(normalizedRole);
+            setIsAuthenticated(true);
+            setCurrentView(ViewState.DASHBOARD);
+          } catch (error: any) {
+            setAuthError(error?.message || 'Falha no login.');
+            setIsAuthenticated(false);
+          } finally {
+            setAuthLoading(false);
+          }
         }}
       />
     );
@@ -110,7 +162,17 @@ const App: React.FC = () => {
         role={userRole}
         currentView={currentView}
         onChangeView={setCurrentView}
-        onLogout={() => setIsAuthenticated(false)}
+        onLogout={async () => {
+          try {
+            await backend.logout();
+          } catch (error) {
+            console.error('Logout failed', error);
+          }
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('token');
+          setIsAuthenticated(false);
+          setAuthError('');
+        }}
       />
 
       <div className="ml-64 flex-1 flex flex-col">

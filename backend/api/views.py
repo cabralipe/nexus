@@ -487,6 +487,7 @@ def _serialize_user(user, profile: Optional[UserProfile]) -> Dict[str, Any]:
         "is_active": user.is_active,
         "role": profile.role if profile else None,
         "school_id": profile.school_id if profile else None,
+        "student_id": profile.student_id if profile else None,
         "department": profile.department if profile else None,
         "phone": profile.phone if profile else None,
         "admission_date": profile.admission_date.isoformat() if profile and profile.admission_date else None,
@@ -905,6 +906,7 @@ def login_user(request):
                 "email": user.email,
                 "role": profile.role if profile else None,
                 "school_id": profile.school_id if profile else None,
+                "student_id": profile.student_id if profile else None,
             },
         }
     )
@@ -1022,6 +1024,7 @@ def get_me(request):
             "username": user.username,
             "email": user.email,
             "role": profile.role if profile else None,
+            "student_id": profile.student_id if profile else None,
             "school": {
                 "id": profile.school.id,
                 "name": profile.school.name,
@@ -1263,6 +1266,10 @@ def dashboard_student(request):
         return error
 
     student_id = request.GET.get("student_id")
+    if not student_id:
+        profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+        if profile and profile.student_id:
+            student_id = str(profile.student_id)
     if not student_id:
         return JsonResponse({"error": "student_id is required"}, status=400)
     student = Student.objects.filter(id=student_id, school=school).first()
