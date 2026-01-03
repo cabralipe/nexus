@@ -25,9 +25,13 @@ View your app in AI Studio: https://ai.studio/apps/drive/1wejKg5CA5BV_7JrQI8iTwM
 1. Create a virtual environment and install dependencies:
    `python -m venv .venv && source .venv/bin/activate`
    `pip install -r backend/requirements.txt`
-2. Set environment variables:
+2. Create the database and user:
+   - `psql -U postgres -c "CREATE USER nexus WITH PASSWORD 'nexus';"`
+   - `psql -U postgres -c "CREATE DATABASE nexus OWNER nexus;"`
+3. Set environment variables:
    - Copy `backend/.env.example` to `backend/.env` and update `GEMINI_API_KEY`
+   - Adjust `DJANGO_DB_*` if you use different credentials
    - The backend loads `backend/.env` automatically
-3. Run the server:
+4. Run the server:
    `python backend/manage.py migrate`
    `python backend/manage.py runserver 0.0.0.0:8000`
