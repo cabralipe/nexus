@@ -160,6 +160,7 @@ export interface ClassDiaryEntry {
 export interface AttendanceRecord {
   studentId: string;
   date: string;
+  subject?: string;
   status: 'present' | 'absent' | 'excused';
 }
 

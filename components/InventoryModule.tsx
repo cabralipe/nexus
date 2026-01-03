@@ -1,18 +1,103 @@
-import React, { useState } from 'react';
-import { Package, Search, Plus, AlertCircle, RefreshCw, Archive, AlertTriangle } from 'lucide-react';
-import { MOCK_INVENTORY } from '../constants';
+import React, { useEffect, useState } from 'react';
+import { Package, Search, Plus, AlertCircle, RefreshCw, Archive, AlertTriangle, XCircle } from 'lucide-react';
 import { InventoryItem } from '../types';
+import { backend } from '../services/backendService';
 
 const InventoryModule: React.FC = () => {
-    const [inventory, setInventory] = useState<InventoryItem[]>(MOCK_INVENTORY);
+    const [inventory, setInventory] = useState<InventoryItem[]>([]);
     const [filter, setFilter] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('All');
     const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [newItem, setNewItem] = useState({
+        name: '',
+        category: 'Stationery',
+        quantity: 0,
+        minQuantity: 0,
+        unit: '',
+        location: '',
+    });
 
-    const handleUpdateQuantity = (id: string, delta: number) => {
-        setInventory(inventory.map(item => 
-            item.id === id ? { ...item, quantity: Math.max(0, item.quantity + delta) } : item
-        ));
+    const loadInventory = async () => {
+        setLoading(true);
+        setErrorMessage('');
+        try {
+            const data = await backend.fetchInventory();
+            const normalized = data.map((item: any) => ({
+                ...item,
+                id: String(item.id),
+                minQuantity: item.minQuantity ?? item.min_quantity ?? 0,
+            }));
+            setInventory(normalized);
+        } catch (error) {
+            console.error('Failed to load inventory', error);
+            setErrorMessage('Nao foi possivel carregar o estoque.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadInventory();
+    }, []);
+
+    const handleCreateItem = async () => {
+        if (!newItem.name.trim()) return;
+        setLoading(true);
+        setErrorMessage('');
+        try {
+            const created = await backend.createInventoryItem({
+                name: newItem.name,
+                category: newItem.category,
+                quantity: newItem.quantity,
+                minQuantity: newItem.minQuantity,
+                unit: newItem.unit,
+                location: newItem.location,
+            });
+            setInventory(prev => [{ ...created, id: String(created.id) }, ...prev]);
+            setShowCreateModal(false);
+            setNewItem({
+                name: '',
+                category: 'Stationery',
+                quantity: 0,
+                minQuantity: 0,
+                unit: '',
+                location: '',
+            });
+        } catch (error) {
+            console.error('Failed to create inventory item', error);
+            setErrorMessage('Nao foi possivel criar o item.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateQuantity = async (id: string, delta: number) => {
+        const item = inventory.find((entry) => entry.id === id);
+        if (!item) return;
+        const nextQuantity = Math.max(0, item.quantity + delta);
+        setInventory(prev =>
+            prev.map(entry => (entry.id === id ? { ...entry, quantity: nextQuantity } : entry))
+        );
+        try {
+            const updated = await backend.updateInventoryItem(id, { quantity: nextQuantity });
+            const normalized = {
+                ...updated,
+                id: String(updated.id),
+                minQuantity: updated.minQuantity ?? updated.min_quantity ?? item.minQuantity,
+            };
+            setInventory(prev =>
+                prev.map(entry => (entry.id === id ? { ...entry, ...normalized } : entry))
+            );
+        } catch (error) {
+            console.error('Failed to update inventory item', error);
+            setErrorMessage('Nao foi possivel atualizar o item.');
+            setInventory(prev =>
+                prev.map(entry => (entry.id === id ? { ...entry, quantity: item.quantity } : entry))
+            );
+        }
     };
 
     const filteredInventory = inventory.filter(item => {
@@ -31,10 +116,19 @@ const InventoryModule: React.FC = () => {
                     <h2 className="text-2xl font-bold text-slate-800">Almoxarifado e Estoque</h2>
                     <p className="text-slate-500">Gestão de materiais, equipamentos e suprimentos.</p>
                 </div>
-                <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium shadow-sm">
+                <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium shadow-sm"
+                >
                     <Plus size={18} /> Novo Item
                 </button>
             </div>
+
+            {errorMessage && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
+                    {errorMessage}
+                </div>
+            )}
 
             {/* Metrics Row */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -155,7 +249,13 @@ const InventoryModule: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {filteredInventory.length > 0 ? (
+                        {loading ? (
+                            <tr>
+                                <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                                    <p className="font-medium">Carregando itens...</p>
+                                </td>
+                            </tr>
+                        ) : filteredInventory.length > 0 ? (
                             filteredInventory.map(item => {
                                 const isLowStock = item.quantity <= item.minQuantity;
                                 return (
@@ -208,6 +308,98 @@ const InventoryModule: React.FC = () => {
                     </tbody>
                 </table>
             </div>
+
+            {showCreateModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold text-lg text-slate-800">Novo Item</h3>
+                            <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
+                                <XCircle size={20} />
+                            </button>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-sm font-medium text-slate-700">Nome</label>
+                                <input
+                                    type="text"
+                                    className="w-full border rounded p-2"
+                                    value={newItem.name}
+                                    onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-sm font-medium text-slate-700">Categoria</label>
+                                    <select
+                                        className="w-full border rounded p-2 bg-white"
+                                        value={newItem.category}
+                                        onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+                                    >
+                                        <option value="Stationery">Papelaria</option>
+                                        <option value="Cleaning">Limpeza</option>
+                                        <option value="Electronics">Eletronicos</option>
+                                        <option value="Didactic">Didatico</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium text-slate-700">Localizacao</label>
+                                    <input
+                                        type="text"
+                                        className="w-full border rounded p-2"
+                                        value={newItem.location}
+                                        onChange={(e) => setNewItem({ ...newItem, location: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4">
+                                <div>
+                                    <label className="text-sm font-medium text-slate-700">Quantidade</label>
+                                    <input
+                                        type="number"
+                                        className="w-full border rounded p-2"
+                                        value={newItem.quantity}
+                                        onChange={(e) => setNewItem({ ...newItem, quantity: Number(e.target.value) })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium text-slate-700">Minimo</label>
+                                    <input
+                                        type="number"
+                                        className="w-full border rounded p-2"
+                                        value={newItem.minQuantity}
+                                        onChange={(e) => setNewItem({ ...newItem, minQuantity: Number(e.target.value) })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium text-slate-700">Unidade</label>
+                                    <input
+                                        type="text"
+                                        className="w-full border rounded p-2"
+                                        value={newItem.unit}
+                                        onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button
+                                    onClick={() => setShowCreateModal(false)}
+                                    className="px-4 py-2 text-sm rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={handleCreateItem}
+                                    className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+                                    disabled={loading || !newItem.name.trim()}
+                                >
+                                    Salvar Item
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

@@ -1,54 +1,121 @@
-import React, { useState } from 'react';
-import { Calendar, FileText, Upload, CheckCircle, AlertCircle, MessageSquare, Clock, Plus, X } from 'lucide-react';
-import { MOCK_ACADEMIC_TARGETS, MOCK_EXAM_SUBMISSIONS } from '../constants';
+import React, { useEffect, useState } from 'react';
+import { Calendar, FileText, Upload, CheckCircle, AlertCircle, MessageSquare, Clock, X } from 'lucide-react';
 import { AcademicTarget, ExamSubmission } from '../types';
+import { backend } from '../services/backendService';
 
 const PedagogicalCoordination: React.FC = () => {
     // State for Calendar Targets
-    const [targets, setTargets] = useState<AcademicTarget[]>(MOCK_ACADEMIC_TARGETS);
+    const [targets, setTargets] = useState<AcademicTarget[]>([]);
     const [newTarget, setNewTarget] = useState({ month: '', requiredClasses: 0, gradeSubmissionDeadline: '', examSubmissionDeadline: '' });
     
     // State for Exams
-    const [exams, setExams] = useState<ExamSubmission[]>(MOCK_EXAM_SUBMISSIONS as any); // Cast to any to avoid strict string literal issues with mock data
+    const [exams, setExams] = useState<ExamSubmission[]>([]);
     const [selectedExamId, setSelectedExamId] = useState<string | null>(null);
     const [feedbackText, setFeedbackText] = useState('');
     const [showUploadModal, setShowUploadModal] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
+    const [examFile, setExamFile] = useState<File | null>(null);
     
     // Mock upload state
     const [uploadData, setUploadData] = useState({ title: '', subject: '', type: 'Standard', studentName: '' });
 
     // Handlers
-    const handleAddTarget = () => {
+    const handleAddTarget = async () => {
         if (!newTarget.month) return;
-        setTargets([...targets, { id: Math.random().toString(), ...newTarget }]);
-        setNewTarget({ month: '', requiredClasses: 0, gradeSubmissionDeadline: '', examSubmissionDeadline: '' });
+        setLoading(true);
+        setErrorMessage('');
+        try {
+            const created = await backend.createAcademicTarget({
+                month: newTarget.month,
+                requiredClasses: newTarget.requiredClasses,
+                gradeSubmissionDeadline: newTarget.gradeSubmissionDeadline,
+                examSubmissionDeadline: newTarget.examSubmissionDeadline,
+            });
+            setTargets(prev => [{ ...created, id: String(created.id) }, ...prev]);
+            setNewTarget({ month: '', requiredClasses: 0, gradeSubmissionDeadline: '', examSubmissionDeadline: '' });
+        } catch (error) {
+            console.error('Failed to create target', error);
+            setErrorMessage('Nao foi possivel salvar a meta.');
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleUpdateStatus = (status: 'Approved' | 'ChangesRequested') => {
+    const handleUpdateStatus = async (status: 'Approved' | 'ChangesRequested') => {
         if (!selectedExamId) return;
-        setExams(exams.map(e => e.id === selectedExamId ? { ...e, status, feedback: feedbackText } : e));
-        setSelectedExamId(null);
-        setFeedbackText('');
+        setLoading(true);
+        setErrorMessage('');
+        try {
+            const updated = await backend.updateExamSubmission(selectedExamId, {
+                status,
+                feedback: feedbackText,
+            });
+            setExams(prev => prev.map(exam => exam.id === selectedExamId ? { ...updated, id: String(updated.id) } : exam));
+            setSelectedExamId(null);
+            setFeedbackText('');
+        } catch (error) {
+            console.error('Failed to update exam submission', error);
+            setErrorMessage('Nao foi possivel atualizar a prova.');
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleSimulateUpload = () => {
-        const newExam: ExamSubmission = {
-            id: Math.random().toString(),
-            title: uploadData.title || 'Nova Prova',
-            subject: uploadData.subject || 'Geral',
-            teacherName: 'Professor Atual', // Mock current user
-            gradeLevel: '9º Ano',
-            type: uploadData.type as 'Standard' | 'Adapted',
-            status: 'Pending',
-            submittedDate: new Date().toISOString().split('T')[0],
-            studentName: uploadData.type === 'Adapted' ? uploadData.studentName : undefined
-        };
-        setExams([newExam, ...exams]);
-        setShowUploadModal(false);
-        setUploadData({ title: '', subject: '', type: 'Standard', studentName: '' });
+    const handleSimulateUpload = async () => {
+        setLoading(true);
+        setErrorMessage('');
+        try {
+            const created = await backend.createExamSubmission({
+                title: uploadData.title || 'Nova Prova',
+                subject: uploadData.subject || 'Geral',
+                gradeLevel: '9º Ano',
+                type: uploadData.type,
+                status: 'Pending',
+                studentName: uploadData.type === 'Adapted' ? uploadData.studentName : '',
+            });
+            if (examFile) {
+                const formData = new FormData();
+                formData.append('entity_type', 'exam');
+                formData.append('entity_id', String(created.id));
+                formData.append('file', examFile);
+                await backend.uploadFile(formData);
+            }
+            setExams(prev => [{ ...created, id: String(created.id) }, ...prev]);
+            setShowUploadModal(false);
+            setUploadData({ title: '', subject: '', type: 'Standard', studentName: '' });
+            setExamFile(null);
+        } catch (error) {
+            console.error('Failed to create exam submission', error);
+            setErrorMessage('Nao foi possivel enviar a prova.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const selectedExam = exams.find(e => e.id === selectedExamId);
+
+    useEffect(() => {
+        const loadData = async () => {
+            setLoading(true);
+            setErrorMessage('');
+            try {
+                const [targetsData, examsData] = await Promise.all([
+                    backend.fetchAcademicTargets(),
+                    backend.fetchExamSubmissions(),
+                ]);
+                setTargets(targetsData.map((item: any) => ({ ...item, id: String(item.id) })));
+                setExams(examsData.map((item: any) => ({ ...item, id: String(item.id) })));
+            } catch (error) {
+                console.error('Failed to load coordination data', error);
+                setErrorMessage('Nao foi possivel carregar os dados da coordenacao.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadData();
+    }, []);
 
     return (
         <div className="space-y-8">
@@ -58,13 +125,22 @@ const PedagogicalCoordination: React.FC = () => {
                     <p className="text-slate-500">Gestão de calendário acadêmico e aprovação de avaliações.</p>
                 </div>
                 <button 
-                    onClick={() => setShowUploadModal(true)}
+                    onClick={() => {
+                        setShowUploadModal(true);
+                        setExamFile(null);
+                    }}
                     className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
                 >
                     <Upload size={18} />
                     Enviar Prova (Professor)
                 </button>
             </div>
+
+            {errorMessage && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
+                    {errorMessage}
+                </div>
+            )}
 
             {/* Section 1: Academic Calendar Targets */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
@@ -111,6 +187,7 @@ const PedagogicalCoordination: React.FC = () => {
                         <button 
                             onClick={handleAddTarget}
                             className="w-full bg-slate-800 text-white p-2 rounded text-sm font-medium hover:bg-slate-900"
+                            disabled={loading}
                         >
                             Definir Metas
                         </button>
@@ -271,7 +348,15 @@ const PedagogicalCoordination: React.FC = () => {
                     <div className="bg-white rounded-xl p-6 w-full max-w-md shadow-2xl">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="font-bold text-lg text-slate-800">Enviar Nova Prova</h3>
-                            <button onClick={() => setShowUploadModal(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                            <button
+                                onClick={() => {
+                                    setShowUploadModal(false);
+                                    setExamFile(null);
+                                }}
+                                className="text-slate-400 hover:text-slate-600"
+                            >
+                                <X size={20} />
+                            </button>
                         </div>
                         <div className="space-y-4">
                             <div>
@@ -295,11 +380,23 @@ const PedagogicalCoordination: React.FC = () => {
                                     <input type="text" className="w-full border rounded p-2" placeholder="Para qual aluno?" value={uploadData.studentName} onChange={e => setUploadData({...uploadData, studentName: e.target.value})} />
                                 </div>
                             )}
-                            <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center text-slate-500 text-sm cursor-pointer hover:bg-slate-50">
+                            <label className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center text-slate-500 text-sm cursor-pointer hover:bg-slate-50 block">
                                 <Upload size={24} className="mx-auto mb-2" />
-                                Clique para selecionar o arquivo PDF/DOCX
-                            </div>
-                            <button onClick={handleSimulateUpload} className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium">Enviar para Análise</button>
+                                <span>{examFile ? examFile.name : 'Clique para selecionar o arquivo PDF/DOCX'}</span>
+                                <input
+                                    type="file"
+                                    className="hidden"
+                                    accept=".pdf,.doc,.docx"
+                                    onChange={(e) => setExamFile(e.target.files?.[0] || null)}
+                                />
+                            </label>
+                            <button
+                                onClick={handleSimulateUpload}
+                                className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium"
+                                disabled={loading}
+                            >
+                                Enviar para Análise
+                            </button>
                         </div>
                     </div>
                 </div>

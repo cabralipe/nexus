@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Search, ClipboardCheck, Upload, CheckCircle, Calendar, AlertTriangle, FileText, X } from 'lucide-react';
-import { MOCK_STUDENTS, MOCK_ABSENCES } from '../constants';
 import { Absence } from '../types';
 import { backend } from '../services/backendService';
 
 const AbsenceJustification: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-    const [absences, setAbsences] = useState<Absence[]>(MOCK_ABSENCES);
+    const [absences, setAbsences] = useState<Absence[]>([]);
+    const [students, setStudents] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
     
     // Form State
     const [justificationReason, setJustificationReason] = useState('');
@@ -16,7 +18,7 @@ const AbsenceJustification: React.FC = () => {
     const [attachedFile, setAttachedFile] = useState<File | null>(null);
 
     // Filter students
-    const filteredStudents = MOCK_STUDENTS.filter(s => 
+    const filteredStudents = students.filter(s => 
         s.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -27,30 +29,91 @@ const AbsenceJustification: React.FC = () => {
     };
 
     const studentAbsences = selectedStudentId 
-        ? absences.filter(a => a.studentName === MOCK_STUDENTS.find(s => s.id === selectedStudentId)?.name)
+        ? absences.filter(a => a.studentName === students.find(s => s.id === selectedStudentId)?.name)
         : [];
     
-    const selectedStudentData = MOCK_STUDENTS.find(s => s.id === selectedStudentId);
+    const selectedStudentData = students.find(s => s.id === selectedStudentId);
+
+    const loadStudents = async () => {
+        setLoading(true);
+        setErrorMessage('');
+        try {
+            const data = await backend.fetchStudents();
+            const normalized = data.map((student: any) => ({
+                id: String(student.id),
+                name: `${student.first_name || ''} ${student.last_name || ''}`.trim() || 'Aluno',
+                grade: student.grade || student.gradeLevel || '—',
+                attendance: student.attendance ?? 0,
+            }));
+            setStudents(normalized);
+        } catch (error) {
+            console.error('Failed to load students', error);
+            setErrorMessage('Nao foi possivel carregar os alunos.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadStudentAbsences = async (studentId: string, studentName: string) => {
+        setLoading(true);
+        setErrorMessage('');
+        try {
+            const data = await backend.fetchAttendance({ student_id: studentId });
+            const filtered = data.filter((record: any) => record.status !== 'present');
+            const mapped = filtered.map((record: any) => ({
+                id: String(record.id),
+                studentName,
+                date: record.date,
+                subject: record.subject || 'Sem disciplina',
+                justified: record.status === 'excused' || record?.justification?.status === 'approved',
+                reason: record?.justification?.reason,
+                observation: record?.justification?.observation,
+            }));
+            setAbsences(mapped);
+        } catch (error) {
+            console.error('Failed to load absences', error);
+            setErrorMessage('Nao foi possivel carregar as faltas.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadStudents();
+    }, []);
+
+    useEffect(() => {
+        if (!selectedStudentId || !selectedStudentData) return;
+        loadStudentAbsences(selectedStudentId, selectedStudentData.name);
+    }, [selectedStudentId, selectedStudentData?.name]);
 
     const handleJustify = async () => {
         if (!selectedAbsenceId || !justificationReason) return;
-        
-        setAbsences(prev => prev.map(a => 
-            a.id === selectedAbsenceId 
-            ? { ...a, justified: true, reason: justificationReason, observation: justificationObservation }
-            : a
-        ));
 
-        if (attachedFile) {
-            try {
+        setLoading(true);
+        setErrorMessage('');
+        try {
+            const justification = await backend.createJustification({
+                attendance_id: selectedAbsenceId,
+                reason: justificationReason,
+                observation: justificationObservation,
+                status: 'approved',
+            });
+            if (attachedFile) {
                 const formData = new FormData();
                 formData.append('entity_type', 'justification');
-                formData.append('entity_id', selectedAbsenceId);
+                formData.append('entity_id', String(justification.id));
                 formData.append('file', attachedFile);
                 await backend.uploadFile(formData);
-            } catch (error) {
-                console.error("Failed to upload justification file", error);
             }
+            if (selectedStudentId && selectedStudentData) {
+                await loadStudentAbsences(selectedStudentId, selectedStudentData.name);
+            }
+        } catch (error) {
+            console.error("Failed to justify absence", error);
+            setErrorMessage('Nao foi possivel salvar a justificativa.');
+        } finally {
+            setLoading(false);
         }
 
         // Reset Form
@@ -74,6 +137,12 @@ const AbsenceJustification: React.FC = () => {
                 </div>
             </div>
 
+            {errorMessage && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
+                    {errorMessage}
+                </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Left Panel: Search & Student Info */}
                 <div className="space-y-6">
@@ -90,7 +159,7 @@ const AbsenceJustification: React.FC = () => {
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
-                            {searchTerm && (
+                            {searchTerm && !loading && (
                                 <div className="absolute top-full left-0 right-0 bg-white border border-slate-200 rounded-lg mt-1 shadow-xl max-h-60 overflow-y-auto z-20">
                                     {filteredStudents.length > 0 ? (
                                         filteredStudents.map(student => (
@@ -109,6 +178,9 @@ const AbsenceJustification: React.FC = () => {
                                 </div>
                             )}
                         </div>
+                        {loading && (
+                            <p className="text-xs text-slate-400 mt-3">Carregando dados...</p>
+                        )}
                     </div>
 
                     {selectedStudentData && (

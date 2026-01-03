@@ -277,6 +277,36 @@ class FinancialTransaction(models.Model):
         return f"{self.description} - {self.amount}"
 
 
+class InventoryItem(models.Model):
+    CATEGORY_STATIONERY = "Stationery"
+    CATEGORY_CLEANING = "Cleaning"
+    CATEGORY_ELECTRONICS = "Electronics"
+    CATEGORY_DIDACTIC = "Didactic"
+
+    CATEGORY_CHOICES = [
+        (CATEGORY_STATIONERY, "Papelaria"),
+        (CATEGORY_CLEANING, "Limpeza"),
+        (CATEGORY_ELECTRONICS, "Eletronicos"),
+        (CATEGORY_DIDACTIC, "Didatico"),
+    ]
+
+    school = models.ForeignKey(School, on_delete=models.CASCADE)
+    name = models.CharField(max_length=200)
+    category = models.CharField(max_length=30, choices=CATEGORY_CHOICES)
+    quantity = models.PositiveIntegerField(default=0)
+    min_quantity = models.PositiveIntegerField(default=0)
+    unit = models.CharField(max_length=40, blank=True)
+    location = models.CharField(max_length=120, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class GradeRecord(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
     classroom = models.ForeignKey(Classroom, on_delete=models.CASCADE)
@@ -310,15 +340,61 @@ class AttendanceRecord(models.Model):
 
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
     classroom = models.ForeignKey(Classroom, on_delete=models.CASCADE)
+    teacher = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)
     date = models.DateField()
+    subject = models.CharField(max_length=120, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = [("student", "classroom", "date")]
+        unique_together = [("student", "classroom", "date", "subject")]
 
     def __str__(self) -> str:
         return f"{self.student} - {self.date}"
+
+
+class AbsenceJustification(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pendente"),
+        (STATUS_APPROVED, "Aprovada"),
+        (STATUS_REJECTED, "Rejeitada"),
+    ]
+
+    attendance = models.OneToOneField(
+        AttendanceRecord,
+        on_delete=models.CASCADE,
+        related_name="justification",
+    )
+    reason = models.CharField(max_length=200)
+    observation = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    created_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="absence_justifications_created",
+    )
+    decided_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="absence_justifications_decided",
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.attendance_id} - {self.status}"
 
 
 class ClassDiaryEntry(models.Model):
@@ -397,6 +473,73 @@ class GradingConfig(models.Model):
 
     def __str__(self) -> str:
         return f"{self.school} - Config"
+
+
+class AcademicTarget(models.Model):
+    school = models.ForeignKey(School, on_delete=models.CASCADE)
+    month_label = models.CharField(max_length=100)
+    required_classes = models.PositiveIntegerField(default=0)
+    grade_submission_deadline = models.DateField()
+    exam_submission_deadline = models.DateField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-grade_submission_deadline", "-exam_submission_deadline"]
+
+    def __str__(self) -> str:
+        return f"{self.school} - {self.month_label}"
+
+
+class ExamSubmission(models.Model):
+    TYPE_STANDARD = "Standard"
+    TYPE_ADAPTED = "Adapted"
+
+    STATUS_PENDING = "Pending"
+    STATUS_APPROVED = "Approved"
+    STATUS_CHANGES_REQUESTED = "ChangesRequested"
+
+    TYPE_CHOICES = [
+        (TYPE_STANDARD, "Padrao"),
+        (TYPE_ADAPTED, "Adaptada"),
+    ]
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pendente"),
+        (STATUS_APPROVED, "Aprovada"),
+        (STATUS_CHANGES_REQUESTED, "Revisao Solicitada"),
+    ]
+
+    school = models.ForeignKey(School, on_delete=models.CASCADE)
+    title = models.CharField(max_length=200)
+    subject = models.CharField(max_length=120)
+    grade_level = models.CharField(max_length=80, blank=True)
+    exam_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_STANDARD)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    student_name = models.CharField(max_length=120, blank=True)
+    feedback = models.TextField(blank=True)
+    scheduled_date = models.DateField(null=True, blank=True)
+    submitted_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="exam_submissions",
+    )
+    decided_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="exam_submissions_decided",
+    )
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-submitted_at"]
+
+    def __str__(self) -> str:
+        return self.title
 
 
 class Notice(models.Model):
@@ -578,3 +721,19 @@ class ApiToken(models.Model):
     def touch(self):
         self.last_used_at = timezone.now()
         self.save(update_fields=["last_used_at"])
+
+
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    token_hash = models.CharField(max_length=128, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "expires_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} - {self.expires_at.isoformat()}"

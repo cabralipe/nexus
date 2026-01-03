@@ -14,11 +14,13 @@ import InventoryModule from './components/InventoryModule';
 import RegistrationModule from './components/RegistrationModule';
 import ClassAllocationModule from './components/ClassAllocationModule';
 import ScheduleModule from './components/ScheduleModule';
+import LoginScreen from './components/LoginScreen';
 import { UserRole, ViewState } from './types';
 import { Bell, Search, UserCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [userRole, setUserRole] = useState<UserRole>(UserRole.ADMIN);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
 
   // Mock Login/Role Switch functionality for SaaS Demo
@@ -90,13 +92,25 @@ const App: React.FC = () => {
     );
   };
 
+  if (!isAuthenticated) {
+    return (
+      <LoginScreen
+        onLogin={(role) => {
+          setUserRole(role);
+          setIsAuthenticated(true);
+          setCurrentView(ViewState.DASHBOARD);
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
-      <Sidebar 
-        role={userRole} 
+      <Sidebar
+        role={userRole}
         currentView={currentView}
         onChangeView={setCurrentView}
-        onLogout={() => alert('Logout clicked')}
+        onLogout={() => setIsAuthenticated(false)}
       />
 
       <div className="ml-64 flex-1 flex flex-col">

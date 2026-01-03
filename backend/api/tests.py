@@ -6,24 +6,31 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 from django.test.utils import override_settings
+from django.utils import timezone
 
 from .models import (
+    AcademicTarget,
+    AbsenceJustification,
     ApiToken,
     AuditLog,
+    AttendanceRecord,
     Classroom,
+    ExamSubmission,
     FinancialTransaction,
     GradeRecord,
     GradingConfig,
+    InventoryItem,
     Invoice,
     School,
     Student,
     TimeSlot,
     TeacherAvailability,
+    UploadAttachment,
     UserProfile,
 )
 
 
-class ApiCrudTests(TestCase):
+class TestApiCrud(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -190,7 +197,7 @@ TEST_MEDIA_ROOT = tempfile.mkdtemp()
 
 
 @override_settings(MEDIA_ROOT=TEST_MEDIA_ROOT)
-class ApiAdvancedTests(TestCase):
+class TestApiAdvanced(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -244,7 +251,7 @@ class ApiAdvancedTests(TestCase):
             amount="120.00",
             due_date=date(2024, 2, 5),
             status=Invoice.STATUS_PAID,
-            paid_at=datetime(2024, 2, 7, 10, 0, 0),
+            paid_at=timezone.make_aware(datetime(2024, 2, 7, 10, 0, 0)),
         )
         response = self.client.post(
             "/api/invoices/reconcile/",
@@ -397,3 +404,277 @@ class ApiAdvancedTests(TestCase):
             data={"entity_type": "material", "entity_id": "123", "file": upload},
         )
         self.assertEqual(response.status_code, 201)
+
+    def test_inventory_crud(self):
+        response = self.client.post(
+            "/api/inventory/",
+            data=json.dumps(
+                {
+                    "name": "Papel Sulfite",
+                    "category": "Stationery",
+                    "quantity": 10,
+                    "min_quantity": 5,
+                    "unit": "Resmas",
+                    "location": "Almoxarifado A",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        item_id = response.json()["data"]["id"]
+
+        response = self.client.get("/api/inventory/?q=Papel")
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(response.json()["pagination"]["total"], 1)
+
+        response = self.client.patch(
+            f"/api/inventory/{item_id}/",
+            data=json.dumps({"quantity": 20}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["quantity"], 20)
+
+        response = self.client.delete(f"/api/inventory/{item_id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(InventoryItem.objects.filter(id=item_id).exists())
+
+    def test_academic_targets_and_exam_submissions(self):
+        response = self.client.post(
+            "/api/academic-targets/",
+            data=json.dumps(
+                {
+                    "month": "Outubro 2024",
+                    "requiredClasses": 20,
+                    "gradeSubmissionDeadline": "2024-10-30",
+                    "examSubmissionDeadline": "2024-10-20",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        target_id = response.json()["data"]["id"]
+        self.assertTrue(AcademicTarget.objects.filter(id=target_id).exists())
+
+        response = self.client.get("/api/academic-targets/")
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(response.json()["pagination"]["total"], 1)
+
+        response = self.client.post(
+            "/api/exam-submissions/",
+            data=json.dumps(
+                {
+                    "title": "Prova de Matematica",
+                    "subject": "Matematica",
+                    "gradeLevel": "9 Ano",
+                    "type": "Standard",
+                    "status": "Pending",
+                    "scheduledDate": "2024-10-25",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        exam_id = response.json()["data"]["id"]
+
+        response = self.client.patch(
+            f"/api/exam-submissions/{exam_id}/",
+            data=json.dumps({"status": "Approved", "feedback": "Ok"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["status"], "Approved")
+
+    def test_exam_upload_attachment(self):
+        response = self.client.post(
+            "/api/exam-submissions/",
+            data=json.dumps(
+                {"title": "Prova Historia", "subject": "Historia", "status": "Pending"}
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        exam_id = response.json()["data"]["id"]
+
+        upload = SimpleUploadedFile("prova.pdf", b"arquivo", content_type="application/pdf")
+        response = self.client.post(
+            "/api/uploads/",
+            data={"entity_type": "exam", "entity_id": str(exam_id), "file": upload},
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            UploadAttachment.objects.filter(entity_type="exam", entity_id=str(exam_id)).exists()
+        )
+
+        response = self.client.get("/api/exam-submissions/")
+        self.assertEqual(response.status_code, 200, response.content)
+        payload = response.json()["data"][0]
+        self.assertTrue(payload["attachments"])
+
+    def test_absence_justification_flow(self):
+        student = Student.objects.create(
+            school=self.school,
+            first_name="Pedro",
+            last_name="Silva",
+        )
+        classroom = Classroom.objects.create(
+            school=self.school,
+            name="3A",
+            year=2024,
+        )
+        response = self.client.post(
+            "/api/attendance/",
+            data=json.dumps(
+                {
+                    "student_id": student.id,
+                    "classroom_id": classroom.id,
+                    "date": "2024-10-10",
+                    "subject": "Matematica",
+                    "status": "absent",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        attendance_id = response.json()["data"]["id"]
+
+        response = self.client.post(
+            "/api/justifications/",
+            data=json.dumps(
+                {
+                    "attendance_id": attendance_id,
+                    "reason": "Atestado",
+                    "observation": "Ok",
+                    "status": "approved",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+        record = AttendanceRecord.objects.get(id=attendance_id)
+        self.assertEqual(record.status, AttendanceRecord.STATUS_EXCUSED)
+        self.assertTrue(AbsenceJustification.objects.filter(attendance=record).exists())
+
+    def test_dashboards_and_teacher_activity(self):
+        today = timezone.localdate()
+        student = Student.objects.create(
+            school=self.school,
+            first_name="Lucas",
+            last_name="Souza",
+        )
+        classroom = Classroom.objects.create(
+            school=self.school,
+            name="4A",
+            year=2024,
+        )
+        Invoice.objects.create(
+            student=student,
+            amount="100.00",
+            due_date=today,
+            status=Invoice.STATUS_OVERDUE,
+        )
+        FinancialTransaction.objects.create(
+            school=self.school,
+            description="Mensalidade",
+            category="Receita",
+            amount="200.00",
+            transaction_type=FinancialTransaction.TYPE_INCOME,
+            status=FinancialTransaction.STATUS_PAID,
+            date=today,
+        )
+
+        response = self.client.get("/api/dashboards/admin/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("finance_series", response.json())
+
+        teacher_user = get_user_model().objects.create_user(
+            username="teacher_dash",
+            email="teacher_dash@example.com",
+            password="password123",
+        )
+        teacher_profile = UserProfile.objects.create(
+            user=teacher_user,
+            school=self.school,
+            role=UserProfile.ROLE_TEACHER,
+        )
+        teacher_token = ApiToken.issue_for_user(teacher_user)
+        teacher_client = Client(HTTP_AUTHORIZATION=f"Token {teacher_token.key}")
+
+        slot = TimeSlot.objects.create(
+            school=self.school,
+            label="08:00 - 08:50",
+            start_time="08:00",
+            end_time="08:50",
+            sort_order=1,
+        )
+        response = teacher_client.post(
+            "/api/schedules/",
+            data=json.dumps(
+                {
+                    "classroom_id": classroom.id,
+                    "time_slot_id": slot.id,
+                    "day_of_week": today.weekday(),
+                    "subject": "Matematica",
+                    "teacher_id": teacher_user.id,
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+        response = teacher_client.post(
+            "/api/attendance/",
+            data=json.dumps(
+                {
+                    "student_id": student.id,
+                    "classroom_id": classroom.id,
+                    "date": today.isoformat(),
+                    "subject": "Matematica",
+                    "status": "present",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+        response = teacher_client.get("/api/dashboards/teacher/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["today_schedule"])
+
+        response = self.client.get("/api/teachers/activities/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["data"])
+
+        response = self.client.post(
+            "/api/grades/",
+            data=json.dumps(
+                {
+                    "student_id": student.id,
+                    "classroom_id": classroom.id,
+                    "subject": "Matematica",
+                    "grade1": 8,
+                    "grade2": 7,
+                    "date": today.isoformat(),
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+        response = self.client.post(
+            "/api/exam-submissions/",
+            data=json.dumps(
+                {
+                    "title": "Prova Matematica",
+                    "subject": "Matematica",
+                    "status": "Pending",
+                    "scheduledDate": (today + timezone.timedelta(days=5)).isoformat(),
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 201)
+
+        response = self.client.get(f"/api/dashboards/student/?student_id={student.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["upcoming_events"])

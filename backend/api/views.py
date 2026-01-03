@@ -1,11 +1,14 @@
+import hashlib
 import json
+import secrets
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Optional
 
 from django.contrib.auth import authenticate, get_user_model
 from django.core.paginator import EmptyPage, Paginator
-from django.db.models import Q, Sum
+from django.db.models import Avg, Count, F, Q, Sum
 from django.http import JsonResponse
+from django.conf import settings
 from django.utils.dateparse import parse_date, parse_datetime, parse_time
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -14,6 +17,8 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from .gemini import generate_text
 from .models import (
     ApiToken,
+    AbsenceJustification,
+    AcademicTarget,
     AttendanceRecord,
     ClassDiaryEntry,
     Classroom,
@@ -21,15 +26,18 @@ from .models import (
     ClassScheduleEntry,
     Conversation,
     EmergencyContact,
+    ExamSubmission,
     Enrollment,
     FinancialTransaction,
     GradingConfig,
     GradeRecord,
     Guardian,
+    InventoryItem,
     Invoice,
     LearningMaterial,
     Message,
     Notice,
+    PasswordResetToken,
     School,
     Student,
     StudentGuardian,
@@ -158,7 +166,10 @@ def _validate_choice(value, choices, field_name):
 
 
 def _parse_date_field(value, field_name):
-    parsed = parse_date(value) if value else None
+    try:
+        parsed = parse_date(value) if value else None
+    except (TypeError, ValueError):
+        parsed = None
     if value and not parsed:
         return None, JsonResponse({"error": "Invalid date", "field": field_name}, status=400)
     return parsed, None
@@ -525,12 +536,23 @@ def _serialize_grade(record: GradeRecord) -> Dict[str, Any]:
 
 
 def _serialize_attendance(record: AttendanceRecord) -> Dict[str, Any]:
+    justification = None
+    try:
+        justification_obj = record.justification
+    except AbsenceJustification.DoesNotExist:
+        justification_obj = None
+    if justification_obj:
+        justification = _serialize_justification(justification_obj)
     return {
         "id": record.id,
         "student_id": record.student_id,
         "classroom_id": record.classroom_id,
+        "teacher_id": record.teacher_id,
         "date": record.date.isoformat(),
+        "subject": record.subject,
         "status": record.status,
+        "justification": justification,
+        "justified": bool(justification and justification.get("status") == AbsenceJustification.STATUS_APPROVED),
         "created_at": record.created_at.isoformat(),
     }
 
@@ -599,6 +621,62 @@ def _serialize_transaction(transaction: FinancialTransaction) -> Dict[str, Any]:
         "status": transaction.status,
         "date": transaction.date.isoformat(),
         "created_at": transaction.created_at.isoformat(),
+    }
+
+
+def _serialize_inventory_item(item: InventoryItem) -> Dict[str, Any]:
+    return {
+        "id": item.id,
+        "school_id": item.school_id,
+        "name": item.name,
+        "category": item.category,
+        "quantity": item.quantity,
+        "minQuantity": item.min_quantity,
+        "unit": item.unit,
+        "location": item.location,
+        "lastUpdated": item.updated_at.isoformat(),
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def _serialize_academic_target(target: AcademicTarget) -> Dict[str, Any]:
+    return {
+        "id": target.id,
+        "school_id": target.school_id,
+        "month": target.month_label,
+        "requiredClasses": target.required_classes,
+        "gradeSubmissionDeadline": target.grade_submission_deadline.isoformat(),
+        "examSubmissionDeadline": target.exam_submission_deadline.isoformat(),
+        "created_at": target.created_at.isoformat(),
+    }
+
+
+def _serialize_exam_submission(exam: ExamSubmission) -> Dict[str, Any]:
+    teacher_name = ""
+    if exam.submitted_by and exam.submitted_by.user:
+        teacher_name = (
+            f"{exam.submitted_by.user.first_name} {exam.submitted_by.user.last_name}".strip()
+            or exam.submitted_by.user.username
+        )
+    attachments = UploadAttachment.objects.filter(
+        entity_type=UploadAttachment.ENTITY_EXAM,
+        entity_id=str(exam.id),
+    ).order_by("-created_at")
+    return {
+        "id": exam.id,
+        "school_id": exam.school_id,
+        "title": exam.title,
+        "subject": exam.subject,
+        "gradeLevel": exam.grade_level,
+        "type": exam.exam_type,
+        "status": exam.status,
+        "submittedDate": exam.submitted_at.date().isoformat(),
+        "scheduledDate": exam.scheduled_date.isoformat() if exam.scheduled_date else None,
+        "teacherName": teacher_name,
+        "studentName": exam.student_name or None,
+        "feedback": exam.feedback or None,
+        "decidedAt": exam.decided_at.isoformat() if exam.decided_at else None,
+        "attachments": [_serialize_upload(upload) for upload in attachments],
     }
 
 
@@ -711,6 +789,44 @@ def _serialize_audit_log(entry: AuditLog) -> Dict[str, Any]:
     }
 
 
+def _serialize_justification(justification: AbsenceJustification) -> Dict[str, Any]:
+    created_by_name = ""
+    if justification.created_by and justification.created_by.user:
+        created_by_name = (
+            f"{justification.created_by.user.first_name} {justification.created_by.user.last_name}".strip()
+            or justification.created_by.user.username
+        )
+    decided_by_name = ""
+    if justification.decided_by and justification.decided_by.user:
+        decided_by_name = (
+            f"{justification.decided_by.user.first_name} {justification.decided_by.user.last_name}".strip()
+            or justification.decided_by.user.username
+        )
+    return {
+        "id": justification.id,
+        "attendance_id": justification.attendance_id,
+        "attendance_subject": justification.attendance.subject if justification.attendance else "",
+        "reason": justification.reason,
+        "observation": justification.observation,
+        "status": justification.status,
+        "created_by": created_by_name,
+        "decided_by": decided_by_name,
+        "decided_at": justification.decided_at.isoformat() if justification.decided_at else None,
+        "created_at": justification.created_at.isoformat(),
+        "updated_at": justification.updated_at.isoformat(),
+    }
+
+def _issue_password_reset_token(user):
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    expires_at = timezone.now() + timezone.timedelta(hours=1)
+    PasswordResetToken.objects.filter(
+        user=user, used_at__isnull=True, expires_at__gt=timezone.now()
+    ).update(used_at=timezone.now())
+    PasswordResetToken.objects.create(user=user, token_hash=token_hash, expires_at=expires_at)
+    return token, expires_at
+
+
 @csrf_exempt
 @require_POST
 def register_user(request):
@@ -817,6 +933,59 @@ def refresh_token(request):
 
 @csrf_exempt
 @require_POST
+def request_password_reset(request):
+    payload = _parse_json(request)
+    error = _missing_fields(payload, ["email"])
+    if error:
+        return JsonResponse(error, status=400)
+
+    User = get_user_model()
+    user = User.objects.filter(email=payload["email"]).first()
+    response_payload = {"success": True}
+    if user:
+        token, expires_at = _issue_password_reset_token(user)
+        if settings.DEBUG:
+            response_payload["token"] = token
+            response_payload["expires_at"] = expires_at.isoformat()
+    return JsonResponse(response_payload)
+
+
+@csrf_exempt
+@require_POST
+def confirm_password_reset(request):
+    payload = _parse_json(request)
+    error = _missing_fields(payload, ["email", "token", "new_password"])
+    if error:
+        return JsonResponse(error, status=400)
+
+    password_error = _validate_password(payload.get("new_password"))
+    if password_error:
+        return password_error
+
+    User = get_user_model()
+    user = User.objects.filter(email=payload["email"]).first()
+    if not user:
+        return JsonResponse({"error": "Invalid token"}, status=400)
+
+    token_hash = hashlib.sha256(payload["token"].encode("utf-8")).hexdigest()
+    reset_token = PasswordResetToken.objects.filter(
+        user=user,
+        token_hash=token_hash,
+        used_at__isnull=True,
+        expires_at__gt=timezone.now(),
+    ).first()
+    if not reset_token:
+        return JsonResponse({"error": "Invalid token"}, status=400)
+
+    user.set_password(payload["new_password"])
+    user.save()
+    reset_token.used_at = timezone.now()
+    reset_token.save(update_fields=["used_at"])
+    return JsonResponse({"success": True})
+
+
+@csrf_exempt
+@require_POST
 def revoke_token(request):
     auth = _get_user_from_request(request)
     if not auth:
@@ -861,6 +1030,383 @@ def get_me(request):
             else None,
         }
     )
+
+
+@require_GET
+def dashboard_admin(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_FINANCE,
+            UserProfile.ROLE_COORDINATOR,
+        ],
+    )
+    if role_error:
+        return role_error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    today = timezone.localdate()
+    start_month = today.replace(day=1)
+
+    students_count = Student.objects.filter(school=school).count()
+    staff_count = UserProfile.objects.filter(school=school).count()
+    classrooms_count = Classroom.objects.filter(school=school).count()
+
+    invoices_qs = Invoice.objects.filter(student__school=school)
+    invoices_total = invoices_qs.count()
+    invoices_overdue = invoices_qs.filter(status=Invoice.STATUS_OVERDUE).count()
+    invoices_open = invoices_qs.filter(status=Invoice.STATUS_OPEN).count()
+
+    income = (
+        FinancialTransaction.objects.filter(
+            school=school,
+            transaction_type=FinancialTransaction.TYPE_INCOME,
+            date__gte=start_month,
+            date__lte=today,
+        ).aggregate(total=Sum("amount"))["total"]
+        or Decimal("0")
+    )
+    expense = (
+        FinancialTransaction.objects.filter(
+            school=school,
+            transaction_type=FinancialTransaction.TYPE_EXPENSE,
+            date__gte=start_month,
+            date__lte=today,
+        ).aggregate(total=Sum("amount"))["total"]
+        or Decimal("0")
+    )
+
+    attendance_summary = AttendanceRecord.objects.filter(
+        classroom__school=school, date=today
+    ).values("status").annotate(count=Count("id"))
+    attendance_by_status = {item["status"]: item["count"] for item in attendance_summary}
+
+    recent_notices = Notice.objects.filter(school=school).order_by("-date", "-created_at")[:5]
+
+    enrollment_counts = (
+        Enrollment.objects.filter(classroom__school=school, status=Enrollment.STATUS_ACTIVE)
+        .values("classroom__grade")
+        .annotate(total=Count("id"))
+        .order_by("classroom__grade")
+    )
+    enrollment_by_grade = [
+        {"name": item["classroom__grade"] or "Sem serie", "value": item["total"]}
+        for item in enrollment_counts
+    ]
+
+    start_period = (today.replace(day=1) - timezone.timedelta(days=180)).replace(day=1)
+    finance_qs = FinancialTransaction.objects.filter(
+        school=school,
+        date__gte=start_period,
+        date__lte=today,
+    )
+    finance_monthly = {}
+    for item in finance_qs.values("date", "transaction_type").annotate(total=Sum("amount")):
+        month_key = item["date"].strftime("%Y-%m")
+        finance_monthly.setdefault(month_key, {"income": Decimal("0"), "expense": Decimal("0")})
+        if item["transaction_type"] == FinancialTransaction.TYPE_INCOME:
+            finance_monthly[month_key]["income"] += item["total"] or Decimal("0")
+        else:
+            finance_monthly[month_key]["expense"] += item["total"] or Decimal("0")
+
+    finance_series = [
+        {
+            "name": key,
+            "income": float(values["income"]),
+            "expense": float(values["expense"]),
+        }
+        for key, values in sorted(finance_monthly.items())
+    ]
+
+    delinquency_rate = (
+        (invoices_overdue / invoices_total) * 100 if invoices_total else 0
+    )
+
+    return JsonResponse(
+        {
+            "counts": {
+                "students": students_count,
+                "staff": staff_count,
+                "classrooms": classrooms_count,
+            },
+            "invoices": {
+                "total": invoices_total,
+                "open": invoices_open,
+                "overdue": invoices_overdue,
+                "delinquency_rate": round(delinquency_rate, 2),
+            },
+            "finance_month": {
+                "income": str(income),
+                "expense": str(expense),
+                "net": str(income - expense),
+            },
+            "finance_series": finance_series,
+            "enrollment_by_grade": enrollment_by_grade,
+            "attendance_today": attendance_by_status,
+            "recent_notices": [_serialize_notice(notice) for notice in recent_notices],
+        }
+    )
+
+
+@require_GET
+def dashboard_teacher(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    role_error = _require_roles(
+        auth["user"],
+        [UserProfile.ROLE_TEACHER, UserProfile.ROLE_COORDINATOR],
+    )
+    if role_error:
+        return role_error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+    if not profile:
+        return JsonResponse({"error": "User profile not found"}, status=404)
+
+    allocations = ClassroomTeacherAllocation.objects.filter(teacher=profile).select_related(
+        "classroom"
+    )
+    classes_count = allocations.values("classroom_id").distinct().count()
+    subjects_count = allocations.values("subject").distinct().count()
+
+    schedule_entries = (
+        ClassScheduleEntry.objects.filter(teacher=profile, classroom__school=school)
+        .select_related("classroom", "time_slot")
+        .order_by("day_of_week", "time_slot__sort_order")
+    )
+    schedule = [
+        {
+            "id": entry.id,
+            "classroom": entry.classroom.name,
+            "subject": entry.subject,
+            "day_of_week": entry.day_of_week,
+            "time_slot": {
+                "label": entry.time_slot.label,
+                "start_time": entry.time_slot.start_time.strftime("%H:%M"),
+                "end_time": entry.time_slot.end_time.strftime("%H:%M"),
+            },
+        }
+        for entry in schedule_entries
+    ]
+
+    today = timezone.localdate()
+    today_entries = [
+        entry
+        for entry in schedule_entries
+        if entry.day_of_week == today.weekday()
+    ]
+    today_schedule = [
+        {
+            "id": entry.id,
+            "classroom": entry.classroom.name,
+            "subject": entry.subject,
+            "time": f"{entry.time_slot.start_time.strftime('%H:%M')} - {entry.time_slot.end_time.strftime('%H:%M')}",
+            "room": entry.classroom.name,
+        }
+        for entry in today_entries
+    ]
+
+    week_start = timezone.localdate() - timezone.timedelta(days=7)
+    diary_last7 = ClassDiaryEntry.objects.filter(
+        teacher=profile, classroom__school=school, date__gte=week_start
+    ).count()
+
+    recent_notices = Notice.objects.filter(school=school).order_by("-date", "-created_at")[:3]
+
+    pending_diary = max(0, classes_count * 5 - diary_last7)
+
+    return JsonResponse(
+        {
+            "counts": {
+                "classes": classes_count,
+                "subjects": subjects_count,
+                "diary_entries_last7": diary_last7,
+                "pending_diary": pending_diary,
+            },
+            "schedule": schedule,
+            "today_schedule": today_schedule,
+            "recent_notices": [_serialize_notice(notice) for notice in recent_notices],
+        }
+    )
+
+
+@require_GET
+def dashboard_student(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+            UserProfile.ROLE_STAFF,
+        ],
+    )
+    if role_error:
+        return role_error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    student_id = request.GET.get("student_id")
+    if not student_id:
+        return JsonResponse({"error": "student_id is required"}, status=400)
+    student = Student.objects.filter(id=student_id, school=school).first()
+    if not student:
+        return JsonResponse({"error": "Student not found"}, status=404)
+
+    attendance_summary = AttendanceRecord.objects.filter(student=student).values("status").annotate(
+        count=Count("id")
+    )
+    attendance_by_status = {item["status"]: item["count"] for item in attendance_summary}
+
+    grades = GradeRecord.objects.filter(student=student)
+    average_final_grade = grades.aggregate(avg=Avg("final_grade"))["avg"]
+
+    invoices = Invoice.objects.filter(student=student).order_by("-due_date")[:5]
+    next_invoice = (
+        Invoice.objects.filter(student=student, status=Invoice.STATUS_OPEN)
+        .order_by("due_date")
+        .first()
+    )
+    upcoming_exams = ExamSubmission.objects.filter(
+        school=school,
+        scheduled_date__gte=timezone.localdate(),
+    ).order_by("scheduled_date")[:5]
+    recent_notices = Notice.objects.filter(school=school).order_by("-date", "-created_at")[:3]
+
+    return JsonResponse(
+        {
+            "student": _serialize_student(student),
+            "attendance": attendance_by_status,
+            "grades": {
+                "average_final": float(average_final_grade)
+                if average_final_grade is not None
+                else None
+            },
+            "invoices": [_serialize_invoice(invoice) for invoice in invoices],
+            "next_invoice": _serialize_invoice(next_invoice) if next_invoice else None,
+            "upcoming_events": [
+                {
+                    "date": exam.scheduled_date.isoformat() if exam.scheduled_date else None,
+                    "subject": exam.subject,
+                    "type": "Prova" if exam.exam_type == ExamSubmission.TYPE_STANDARD else "Prova Adaptada",
+                    "status": exam.status,
+                }
+                for exam in upcoming_exams
+            ],
+            "recent_notices": [_serialize_notice(notice) for notice in recent_notices],
+        }
+    )
+
+
+@require_GET
+def teacher_activities(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+        ],
+    )
+    if role_error:
+        return role_error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    now = timezone.now()
+    teachers = UserProfile.objects.select_related("user").filter(
+        school=school, role=UserProfile.ROLE_TEACHER
+    )
+    allocations = ClassroomTeacherAllocation.objects.filter(
+        classroom__school=school, teacher__in=teachers
+    ).select_related("classroom", "teacher")
+    allocations_by_teacher = {}
+    for alloc in allocations:
+        allocations_by_teacher.setdefault(alloc.teacher_id, []).append(alloc)
+
+    data = []
+    for profile in teachers:
+        user = profile.user
+        name = f"{user.first_name} {user.last_name}".strip() or user.username
+        subject = ""
+        teacher_allocs = allocations_by_teacher.get(profile.id, [])
+        if teacher_allocs:
+            subject = ", ".join(sorted({alloc.subject for alloc in teacher_allocs}))
+
+        last_diary = (
+            ClassDiaryEntry.objects.filter(teacher=profile, classroom__school=school)
+            .order_by("-date")
+            .first()
+        )
+        last_attendance = (
+            AttendanceRecord.objects.filter(teacher=profile)
+            .order_by("-date")
+            .first()
+        )
+
+        last_login = user.last_login
+        last_activity = max(
+            [
+                dt
+                for dt in [
+                    last_login.date() if last_login else None,
+                    last_diary.date if last_diary else None,
+                    last_attendance.date if last_attendance else None,
+                ]
+                if dt
+            ],
+            default=None,
+        )
+
+        status = "Idle"
+        if last_activity:
+            delta_days = (now.date() - last_activity).days
+            if delta_days <= 7:
+                status = "Active"
+            elif delta_days <= 14:
+                status = "Warning"
+            else:
+                status = "Idle"
+
+        data.append(
+            {
+                "id": profile.id,
+                "name": name,
+                "subject": subject or "Sem disciplina",
+                "lastLogin": last_login.isoformat() if last_login else None,
+                "lastDiaryUpdate": last_diary.date.isoformat() if last_diary else None,
+                "lastAttendanceUpdate": last_attendance.date.isoformat() if last_attendance else None,
+                "status": status,
+            }
+        )
+
+    summary = {
+        "active": sum(1 for item in data if item["status"] == "Active"),
+        "warning": sum(1 for item in data if item["status"] == "Warning"),
+        "idle": sum(1 for item in data if item["status"] == "Idle"),
+        "total": len(data),
+    }
+    return JsonResponse({"summary": summary, "data": data})
 
 
 @csrf_exempt
@@ -1337,6 +1883,7 @@ def classrooms(request):
             UserProfile.ROLE_DIRECTOR,
             UserProfile.ROLE_COORDINATOR,
             UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_TEACHER,
         ],
     )
     if role_error:
@@ -1382,6 +1929,7 @@ def classroom_detail(request, classroom_id: int):
             UserProfile.ROLE_DIRECTOR,
             UserProfile.ROLE_COORDINATOR,
             UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_TEACHER,
         ],
     )
     if role_error:
@@ -1459,6 +2007,7 @@ def classroom_allocations(request, classroom_id: int):
             UserProfile.ROLE_DIRECTOR,
             UserProfile.ROLE_COORDINATOR,
             UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_TEACHER,
         ],
     )
     if role_error:
@@ -1534,6 +2083,7 @@ def classroom_students(request, classroom_id: int):
             UserProfile.ROLE_DIRECTOR,
             UserProfile.ROLE_COORDINATOR,
             UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_TEACHER,
         ],
     )
     if role_error:
@@ -1628,6 +2178,7 @@ def students(request):
             UserProfile.ROLE_DIRECTOR,
             UserProfile.ROLE_COORDINATOR,
             UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_TEACHER,
         ],
     )
     if role_error:
@@ -2681,6 +3232,11 @@ def uploads(request):
     if type_error:
         return type_error
 
+    if entity_type == UploadAttachment.ENTITY_EXAM:
+        exam = ExamSubmission.objects.filter(id=entity_id, school=school).first()
+        if not exam:
+            return JsonResponse({"error": "Exam submission not found"}, status=404)
+
     if "file" not in request.FILES:
         return JsonResponse({"error": "File is required"}, status=400)
     uploaded_file = request.FILES["file"]
@@ -2801,15 +3357,22 @@ def cashflow_summary(request):
         else:
             monthly[month_key]["expense"] += entry["total"]
 
+    def _format_decimal(value):
+        return f"{value:.2f}"
+
     return JsonResponse(
         {
             "summary": {
-                "income": str(income),
-                "expense": str(expense),
-                "net": str(income - expense),
+                "income": _format_decimal(income),
+                "expense": _format_decimal(expense),
+                "net": _format_decimal(income - expense),
             },
             "monthly": [
-                {"month": key, "income": str(value["income"]), "expense": str(value["expense"])}
+                {
+                    "month": key,
+                    "income": _format_decimal(value["income"]),
+                    "expense": _format_decimal(value["expense"]),
+                }
                 for key, value in sorted(monthly.items())
             ],
         }
@@ -2868,6 +3431,180 @@ def reconcile_invoices(request):
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
+def justifications(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    if request.method == "GET":
+        items = AbsenceJustification.objects.filter(attendance__student__school=school)
+        if "student_id" in request.GET:
+            items = items.filter(attendance__student_id=request.GET.get("student_id"))
+        if "classroom_id" in request.GET:
+            items = items.filter(attendance__classroom_id=request.GET.get("classroom_id"))
+        if "status" in request.GET:
+            items = items.filter(status=request.GET.get("status"))
+        if "date" in request.GET:
+            items = items.filter(attendance__date=request.GET.get("date"))
+        items = items.select_related("attendance", "created_by__user", "decided_by__user").order_by(
+            "-created_at"
+        )
+        return JsonResponse(_paginate(request, items, _serialize_justification))
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    payload = _parse_json(request)
+    error = _missing_fields(payload, ["attendance_id", "reason"])
+    if error:
+        return JsonResponse(error, status=400)
+
+    status_value = payload.get("status") or AbsenceJustification.STATUS_APPROVED
+    status_error = _validate_choice(
+        status_value, AbsenceJustification.STATUS_CHOICES, "status"
+    )
+    if status_error:
+        return status_error
+
+    attendance = AttendanceRecord.objects.filter(
+        id=payload["attendance_id"], student__school=school
+    ).first()
+    if not attendance:
+        return JsonResponse({"error": "Attendance record not found"}, status=404)
+
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+    justification, created = AbsenceJustification.objects.update_or_create(
+        attendance=attendance,
+        defaults={
+            "reason": payload.get("reason"),
+            "observation": payload.get("observation", ""),
+            "status": status_value,
+            "created_by": profile,
+        },
+    )
+
+    if status_value in [AbsenceJustification.STATUS_APPROVED, AbsenceJustification.STATUS_REJECTED]:
+        justification.decided_by = profile
+        justification.decided_at = timezone.now()
+        justification.save(update_fields=["decided_by", "decided_at", "updated_at"])
+
+    if status_value == AbsenceJustification.STATUS_APPROVED:
+        attendance.status = AttendanceRecord.STATUS_EXCUSED
+        attendance.save(update_fields=["status"])
+    elif status_value == AbsenceJustification.STATUS_REJECTED:
+        attendance.status = AttendanceRecord.STATUS_ABSENT
+        attendance.save(update_fields=["status"])
+
+    _log_action(
+        auth["user"],
+        school,
+        "absence_justification_created" if created else "absence_justification_updated",
+        str(justification.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_justification(justification)}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH", "DELETE"])
+def justification_detail(request, justification_id: int):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    justification = AbsenceJustification.objects.filter(
+        id=justification_id, attendance__student__school=school
+    ).select_related("attendance").first()
+    if not justification:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    if request.method == "DELETE":
+        attendance = justification.attendance
+        was_approved = justification.status == AbsenceJustification.STATUS_APPROVED
+        justification.delete()
+        if was_approved and attendance.status == AttendanceRecord.STATUS_EXCUSED:
+            attendance.status = AttendanceRecord.STATUS_ABSENT
+            attendance.save(update_fields=["status"])
+        _log_action(
+            auth["user"],
+            school,
+            "absence_justification_deleted",
+            str(justification_id),
+            request,
+        )
+        return JsonResponse({"success": True})
+
+    payload = _parse_json(request)
+    if "reason" in payload:
+        justification.reason = payload.get("reason")
+    if "observation" in payload:
+        justification.observation = payload.get("observation", "")
+    if "status" in payload:
+        status_value = payload.get("status")
+        status_error = _validate_choice(
+            status_value, AbsenceJustification.STATUS_CHOICES, "status"
+        )
+        if status_error:
+            return status_error
+        justification.status = status_value
+        profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+        if status_value in [
+            AbsenceJustification.STATUS_APPROVED,
+            AbsenceJustification.STATUS_REJECTED,
+        ]:
+            justification.decided_by = profile
+            justification.decided_at = timezone.now()
+        else:
+            justification.decided_by = None
+            justification.decided_at = None
+
+        if status_value == AbsenceJustification.STATUS_APPROVED:
+            justification.attendance.status = AttendanceRecord.STATUS_EXCUSED
+            justification.attendance.save(update_fields=["status"])
+        elif status_value == AbsenceJustification.STATUS_REJECTED:
+            justification.attendance.status = AttendanceRecord.STATUS_ABSENT
+            justification.attendance.save(update_fields=["status"])
+
+    justification.save()
+    _log_action(
+        auth["user"],
+        school,
+        "absence_justification_updated",
+        str(justification.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_justification(justification)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
 def attendance(request):
     auth, error = _require_auth(request)
     if error:
@@ -2882,8 +3619,12 @@ def attendance(request):
             items = items.filter(classroom_id=request.GET.get("classroom_id"))
         if "student_id" in request.GET:
             items = items.filter(student_id=request.GET.get("student_id"))
+        if "teacher_id" in request.GET:
+            items = items.filter(teacher_id=request.GET.get("teacher_id"))
         if "date" in request.GET:
             items = items.filter(date=request.GET.get("date"))
+        if "subject" in request.GET:
+            items = items.filter(subject=request.GET.get("subject"))
         items = items.order_by("-date")
         return JsonResponse(_paginate(request, items, _serialize_attendance))
 
@@ -2916,11 +3657,27 @@ def attendance(request):
     if not student or not classroom:
         return JsonResponse({"error": "Not found"}, status=404)
 
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+    teacher_profile = profile
+    if "teacher_id" in payload and profile and profile.role in [
+        UserProfile.ROLE_ADMIN,
+        UserProfile.ROLE_DIRECTOR,
+        UserProfile.ROLE_COORDINATOR,
+    ]:
+        teacher_profile = UserProfile.objects.filter(
+            Q(user_id=payload.get("teacher_id")) | Q(id=payload.get("teacher_id")),
+            school=school,
+            role=UserProfile.ROLE_TEACHER,
+        ).first()
     record, _ = AttendanceRecord.objects.update_or_create(
         student=student,
         classroom=classroom,
         date=date_value,
-        defaults={"status": payload.get("status")},
+        subject=payload.get("subject", ""),
+        defaults={
+            "status": payload.get("status"),
+            "teacher": teacher_profile,
+        },
     )
     _log_action(
         auth["user"],
@@ -2970,6 +3727,14 @@ def attendance_detail(request, attendance_id: int):
         return JsonResponse({"success": True})
 
     payload = _parse_json(request)
+    if "subject" in payload:
+        record.subject = payload.get("subject", "")
+    if "teacher_id" in payload:
+        teacher_profile = UserProfile.objects.filter(
+            user_id=payload.get("teacher_id"), school=school
+        ).first()
+        if teacher_profile:
+            record.teacher = teacher_profile
     if "status" in payload:
         status_error = _validate_choice(payload.get("status"), AttendanceRecord.STATUS_CHOICES, "status")
         if status_error:
@@ -3516,6 +4281,430 @@ def transaction_detail(request, transaction_id: int):
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
+def inventory_items(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    if request.method == "GET":
+        items = InventoryItem.objects.filter(school=school)
+        if "category" in request.GET:
+            items = items.filter(category=request.GET.get("category"))
+        if request.GET.get("low_stock") in ["1", "true", "True"]:
+            items = items.filter(quantity__lte=F("min_quantity"))
+        if "q" in request.GET:
+            items = items.filter(name__icontains=request.GET.get("q"))
+        return JsonResponse(_paginate(request, items.order_by("name"), _serialize_inventory_item))
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_SUPPORT,
+            UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_FINANCE,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    payload = _parse_json(request)
+    error = _missing_fields(payload, ["name", "category"])
+    if error:
+        return JsonResponse(error, status=400)
+
+    category_error = _validate_choice(
+        payload.get("category"), InventoryItem.CATEGORY_CHOICES, "category"
+    )
+    if category_error:
+        return category_error
+
+    item = InventoryItem.objects.create(
+        school=school,
+        name=payload.get("name"),
+        category=payload.get("category"),
+        quantity=int(payload.get("quantity") or 0),
+        min_quantity=int(payload.get("min_quantity") or payload.get("minQuantity") or 0),
+        unit=payload.get("unit", ""),
+        location=payload.get("location", ""),
+    )
+    _log_action(
+        auth["user"],
+        school,
+        "inventory_created",
+        str(item.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_inventory_item(item)}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH", "DELETE"])
+def inventory_item_detail(request, item_id: int):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    item = InventoryItem.objects.filter(id=item_id, school=school).first()
+    if not item:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_SUPPORT,
+            UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_FINANCE,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    if request.method == "DELETE":
+        item.delete()
+        _log_action(
+            auth["user"],
+            school,
+            "inventory_deleted",
+            str(item_id),
+            request,
+        )
+        return JsonResponse({"success": True})
+
+    payload = _parse_json(request)
+    if "name" in payload:
+        item.name = payload.get("name")
+    if "category" in payload:
+        category_error = _validate_choice(
+            payload.get("category"), InventoryItem.CATEGORY_CHOICES, "category"
+        )
+        if category_error:
+            return category_error
+        item.category = payload.get("category")
+    if "quantity" in payload:
+        item.quantity = int(payload.get("quantity") or 0)
+    if "min_quantity" in payload or "minQuantity" in payload:
+        item.min_quantity = int(payload.get("min_quantity") or payload.get("minQuantity") or 0)
+    if "unit" in payload:
+        item.unit = payload.get("unit") or ""
+    if "location" in payload:
+        item.location = payload.get("location") or ""
+    item.save()
+    _log_action(
+        auth["user"],
+        school,
+        "inventory_updated",
+        str(item.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_inventory_item(item)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def academic_targets(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    if request.method == "GET":
+        items = AcademicTarget.objects.filter(school=school)
+        return JsonResponse(_paginate(request, items, _serialize_academic_target))
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    payload = _parse_json(request)
+    error = _missing_fields(
+        payload,
+        ["month", "requiredClasses", "gradeSubmissionDeadline", "examSubmissionDeadline"],
+    )
+    if error:
+        return JsonResponse(error, status=400)
+
+    grade_deadline, grade_error = _parse_date_field(
+        payload.get("gradeSubmissionDeadline"), "gradeSubmissionDeadline"
+    )
+    if grade_error:
+        return grade_error
+    exam_deadline, exam_error = _parse_date_field(
+        payload.get("examSubmissionDeadline"), "examSubmissionDeadline"
+    )
+    if exam_error:
+        return exam_error
+
+    target = AcademicTarget.objects.create(
+        school=school,
+        month_label=payload.get("month"),
+        required_classes=int(payload.get("requiredClasses") or 0),
+        grade_submission_deadline=grade_deadline,
+        exam_submission_deadline=exam_deadline,
+    )
+    _log_action(
+        auth["user"],
+        school,
+        "academic_target_created",
+        str(target.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_academic_target(target)}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH", "DELETE"])
+def academic_target_detail(request, target_id: int):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    target = AcademicTarget.objects.filter(id=target_id, school=school).first()
+    if not target:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    if request.method == "DELETE":
+        target.delete()
+        _log_action(
+            auth["user"],
+            school,
+            "academic_target_deleted",
+            str(target_id),
+            request,
+        )
+        return JsonResponse({"success": True})
+
+    payload = _parse_json(request)
+    if "month" in payload:
+        target.month_label = payload.get("month")
+    if "requiredClasses" in payload:
+        target.required_classes = int(payload.get("requiredClasses") or 0)
+    if "gradeSubmissionDeadline" in payload:
+        grade_deadline, grade_error = _parse_date_field(
+            payload.get("gradeSubmissionDeadline"), "gradeSubmissionDeadline"
+        )
+        if grade_error:
+            return grade_error
+        target.grade_submission_deadline = grade_deadline
+    if "examSubmissionDeadline" in payload:
+        exam_deadline, exam_error = _parse_date_field(
+            payload.get("examSubmissionDeadline"), "examSubmissionDeadline"
+        )
+        if exam_error:
+            return exam_error
+        target.exam_submission_deadline = exam_deadline
+    target.save()
+    _log_action(
+        auth["user"],
+        school,
+        "academic_target_updated",
+        str(target.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_academic_target(target)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def exam_submissions(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    if request.method == "GET":
+        items = ExamSubmission.objects.filter(school=school)
+        if "status" in request.GET:
+            items = items.filter(status=request.GET.get("status"))
+        if "type" in request.GET:
+            items = items.filter(exam_type=request.GET.get("type"))
+        if "teacher_id" in request.GET:
+            items = items.filter(submitted_by__user_id=request.GET.get("teacher_id"))
+        if "grade_level" in request.GET:
+            items = items.filter(grade_level=request.GET.get("grade_level"))
+        if "scheduled_from" in request.GET:
+            items = items.filter(scheduled_date__gte=request.GET.get("scheduled_from"))
+        if "scheduled_to" in request.GET:
+            items = items.filter(scheduled_date__lte=request.GET.get("scheduled_to"))
+        items = items.select_related("submitted_by__user").order_by("-submitted_at")
+        return JsonResponse(_paginate(request, items, _serialize_exam_submission))
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    payload = _parse_json(request)
+    error = _missing_fields(payload, ["title", "subject"])
+    if error:
+        return JsonResponse(error, status=400)
+
+    exam_type = payload.get("type", ExamSubmission.TYPE_STANDARD)
+    type_error = _validate_choice(exam_type, ExamSubmission.TYPE_CHOICES, "type")
+    if type_error:
+        return type_error
+    status_value = payload.get("status", ExamSubmission.STATUS_PENDING)
+    status_error = _validate_choice(status_value, ExamSubmission.STATUS_CHOICES, "status")
+    if status_error:
+        return status_error
+
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+    scheduled_date = None
+    if payload.get("scheduledDate"):
+        scheduled_date, date_error = _parse_date_field(
+            payload.get("scheduledDate"), "scheduledDate"
+        )
+        if date_error:
+            return date_error
+
+    exam = ExamSubmission.objects.create(
+        school=school,
+        title=payload.get("title"),
+        subject=payload.get("subject"),
+        grade_level=payload.get("gradeLevel", ""),
+        exam_type=exam_type,
+        status=status_value,
+        student_name=payload.get("studentName", ""),
+        feedback=payload.get("feedback", ""),
+        scheduled_date=scheduled_date,
+        submitted_by=profile,
+    )
+    _log_action(
+        auth["user"],
+        school,
+        "exam_submission_created",
+        str(exam.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_exam_submission(exam)}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH", "DELETE"])
+def exam_submission_detail(request, exam_id: int):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    exam = ExamSubmission.objects.filter(id=exam_id, school=school).first()
+    if not exam:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    if request.method == "DELETE":
+        exam.delete()
+        _log_action(
+            auth["user"],
+            school,
+            "exam_submission_deleted",
+            str(exam_id),
+            request,
+        )
+        return JsonResponse({"success": True})
+
+    payload = _parse_json(request)
+    if "title" in payload:
+        exam.title = payload.get("title")
+    if "subject" in payload:
+        exam.subject = payload.get("subject")
+    if "gradeLevel" in payload:
+        exam.grade_level = payload.get("gradeLevel", "")
+    if "type" in payload:
+        type_error = _validate_choice(payload.get("type"), ExamSubmission.TYPE_CHOICES, "type")
+        if type_error:
+            return type_error
+        exam.exam_type = payload.get("type")
+    if "status" in payload:
+        status_error = _validate_choice(
+            payload.get("status"), ExamSubmission.STATUS_CHOICES, "status"
+        )
+        if status_error:
+            return status_error
+        exam.status = payload.get("status")
+    if "studentName" in payload:
+        exam.student_name = payload.get("studentName", "")
+    if "feedback" in payload:
+        exam.feedback = payload.get("feedback", "")
+    if "scheduledDate" in payload:
+        scheduled_date, date_error = _parse_date_field(
+            payload.get("scheduledDate"), "scheduledDate"
+        )
+        if date_error:
+            return date_error
+        exam.scheduled_date = scheduled_date
+
+    if "status" in payload or "feedback" in payload:
+        profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+        exam.decided_by = profile
+        exam.decided_at = timezone.now()
+
+    exam.save()
+    _log_action(
+        auth["user"],
+        school,
+        "exam_submission_updated",
+        str(exam.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_exam_submission(exam)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
 def notices(request):
     auth, error = _require_auth(request)
     if error:
@@ -4031,6 +5220,7 @@ def schedules(request):
             UserProfile.ROLE_DIRECTOR,
             UserProfile.ROLE_COORDINATOR,
             UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_TEACHER,
         ],
     )
     if role_error:

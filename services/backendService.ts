@@ -136,6 +136,30 @@ export const backend = {
     });
     return data.data;
   },
+  async fetchJustifications(params: Record<string, string> = {}) {
+    const query = new URLSearchParams(params).toString();
+    const data = await requestJson<{ data: any[] }>(
+      `/justifications/?page_size=200${query ? `&${query}` : ""}`
+    );
+    return withPagination(data);
+  },
+  async createJustification(payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>("/justifications/", {
+      method: "POST",
+      body: payload,
+    });
+    return data.data;
+  },
+  async updateJustification(id: string, payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>(`/justifications/${id}/`, {
+      method: "PATCH",
+      body: payload,
+    });
+    return data.data;
+  },
+  async deleteJustification(id: string) {
+    return requestJson<{ success: boolean }>(`/justifications/${id}/`, { method: "DELETE" });
+  },
   async fetchDiaryEntries(params: Record<string, string> = {}) {
     const query = new URLSearchParams(params).toString();
     const data = await requestJson<{ data: any[] }>(
@@ -218,6 +242,75 @@ export const backend = {
       body: payload,
     });
     return data.data;
+  },
+  async fetchInventory(params: Record<string, string> = {}) {
+    const query = new URLSearchParams(params).toString();
+    const data = await requestJson<{ data: any[] }>(
+      `/inventory/?page_size=200${query ? `&${query}` : ""}`
+    );
+    return withPagination(data);
+  },
+  async createInventoryItem(payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>("/inventory/", {
+      method: "POST",
+      body: payload,
+    });
+    return data.data;
+  },
+  async updateInventoryItem(id: string, payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>(`/inventory/${id}/`, {
+      method: "PATCH",
+      body: payload,
+    });
+    return data.data;
+  },
+  async deleteInventoryItem(id: string) {
+    return requestJson<{ success: boolean }>(`/inventory/${id}/`, { method: "DELETE" });
+  },
+  async fetchAcademicTargets() {
+    const data = await requestJson<{ data: any[] }>("/academic-targets/?page_size=200");
+    return withPagination(data);
+  },
+  async createAcademicTarget(payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>("/academic-targets/", {
+      method: "POST",
+      body: payload,
+    });
+    return data.data;
+  },
+  async updateAcademicTarget(id: string, payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>(`/academic-targets/${id}/`, {
+      method: "PATCH",
+      body: payload,
+    });
+    return data.data;
+  },
+  async deleteAcademicTarget(id: string) {
+    return requestJson<{ success: boolean }>(`/academic-targets/${id}/`, { method: "DELETE" });
+  },
+  async fetchExamSubmissions(params: Record<string, string> = {}) {
+    const query = new URLSearchParams(params).toString();
+    const data = await requestJson<{ data: any[] }>(
+      `/exam-submissions/?page_size=200${query ? `&${query}` : ""}`
+    );
+    return withPagination(data);
+  },
+  async createExamSubmission(payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>("/exam-submissions/", {
+      method: "POST",
+      body: payload,
+    });
+    return data.data;
+  },
+  async updateExamSubmission(id: string, payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>(`/exam-submissions/${id}/`, {
+      method: "PATCH",
+      body: payload,
+    });
+    return data.data;
+  },
+  async deleteExamSubmission(id: string) {
+    return requestJson<{ success: boolean }>(`/exam-submissions/${id}/`, { method: "DELETE" });
   },
   async fetchNotices() {
     const data = await requestJson<{ data: any[] }>("/notices/?page_size=200");
@@ -305,6 +398,9 @@ export const backend = {
   async fetchGradingConfig() {
     const data = await requestJson<{ data: any }>("/grading-config/");
     return data.data;
+  },
+  async fetchTeacherActivities() {
+    return requestJson<{ summary: any; data: any[] }>("/teachers/activities/");
   },
   async fetchAuditLogs(params: Record<string, string> = {}) {
     const query = new URLSearchParams(params).toString();
