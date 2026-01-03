@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { CalendarClock, User, Check, Clock, School, ChevronRight, Ban, Settings, Plus, Trash2, ArrowRight, Printer, Layout } from 'lucide-react';
-import { MOCK_STAFF, MOCK_SCHOOL_CLASSES } from '../constants';
 import { Staff, SchoolClass } from '../types';
+import { backend } from '../services/backendService';
 
 type Mode = 'availability' | 'timetable' | 'configuration' | 'personal';
 
@@ -13,6 +13,13 @@ const INITIAL_TIME_SLOTS = [
     '10:20 - 11:10',
     '11:10 - 12:00'
 ];
+
+type TimeSlotItem = {
+    id: string;
+    label: string;
+    start: string;
+    end: string;
+};
 
 // Record<TeacherID, Record<DayIndex, SlotIndex[]>>
 type AvailabilityMap = Record<string, Record<number, number[]>>;
@@ -36,37 +43,164 @@ const ScheduleModule: React.FC = () => {
     const [mode, setMode] = useState<Mode>('availability');
     
     // Time Slot Configuration State
-    const [timeSlots, setTimeSlots] = useState<string[]>(INITIAL_TIME_SLOTS);
+    const [timeSlots, setTimeSlots] = useState<TimeSlotItem[]>([]);
     const [newSlotStart, setNewSlotStart] = useState('');
     const [newSlotEnd, setNewSlotEnd] = useState('');
 
-    const [teachers] = useState<Staff[]>(MOCK_STAFF.filter(s => s.role === 'Teacher'));
-    const [classes] = useState<SchoolClass[]>(MOCK_SCHOOL_CLASSES);
+    const [teachers, setTeachers] = useState<Staff[]>([]);
+    const [classes, setClasses] = useState<SchoolClass[]>([]);
     
     // Default to first teacher for demo purposes if null
-    const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(teachers[0]?.id || null);
-    const [selectedClassId, setSelectedClassId] = useState<string | null>(classes[0]?.id || null);
+    const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
+    const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
 
     // Mock Data State
     const [availability, setAvailability] = useState<AvailabilityMap>({});
-    const [schedules, setSchedules] = useState<ScheduleMap>(INITIAL_SCHEDULE_DATA);
+    const [availabilityIds, setAvailabilityIds] = useState<Record<string, string>>({});
+    const [schedules, setSchedules] = useState<ScheduleMap>({});
+    const [scheduleIds, setScheduleIds] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        const loadScheduleData = async () => {
+            try {
+                const [staffData, classesData, slotsData, availabilityData, schedulesData] = await Promise.all([
+                    backend.fetchStaff(),
+                    backend.fetchClassrooms(),
+                    backend.fetchTimeSlots(),
+                    backend.fetchAvailability(),
+                    backend.fetchSchedules(),
+                ]);
+
+                const teachersList: Staff[] = staffData
+                    .filter((member: any) => member.role === 'Teacher')
+                    .map((member: any) => ({
+                        id: String(member.id),
+                        name: member.name,
+                        role: member.role,
+                        department: member.department || '',
+                        phone: member.phone || '',
+                        email: member.email || '',
+                        admissionDate: member.admissionDate || member.admission_date || '',
+                    }));
+                setTeachers(teachersList);
+                setSelectedTeacherId(teachersList[0]?.id || null);
+
+                const allocationsByClass = await Promise.all(
+                    classesData.map(async (item: any) => {
+                        const allocations = await backend.fetchAllocations(String(item.id));
+                        return { id: String(item.id), allocations };
+                    })
+                );
+                const allocationsMap = new Map(
+                    allocationsByClass.map(({ id, allocations }) => [id, allocations])
+                );
+
+                const classList: SchoolClass[] = classesData.map((cls: any) => ({
+                    id: String(cls.id),
+                    name: cls.name,
+                    gradeLevel: cls.gradeLevel || cls.grade || '',
+                    shift: cls.shift === 'morning' ? 'Morning' : cls.shift === 'afternoon' ? 'Afternoon' : 'Night',
+                    academicYear: cls.academicYear || cls.year,
+                    capacity: cls.capacity || 30,
+                    enrolledStudentIds: [],
+                    teacherAllocations: (allocationsMap.get(String(cls.id)) || []).map((alloc: any) => ({
+                        subject: alloc.subject,
+                        teacherId: String(alloc.teacher_id),
+                    })),
+                }));
+                setClasses(classList);
+                setSelectedClassId(classList[0]?.id || null);
+
+                const slotItems: TimeSlotItem[] = slotsData.length
+                    ? slotsData.map((slot: any) => ({
+                        id: String(slot.id),
+                        label: slot.label || `${slot.start_time} - ${slot.end_time}`,
+                        start: slot.start_time,
+                        end: slot.end_time,
+                    }))
+                    : INITIAL_TIME_SLOTS.map((label, idx) => ({
+                        id: `local-${idx}`,
+                        label,
+                        start: label.split(' - ')[0],
+                        end: label.split(' - ')[1],
+                    }));
+                setTimeSlots(slotItems);
+
+                const availabilityMap: AvailabilityMap = {};
+                const availabilityIdMap: Record<string, string> = {};
+                availabilityData.forEach((item: any) => {
+                    const teacherId = String(item.teacher_id);
+                    const slotIndex = slotItems.findIndex(slot => slot.id === String(item.time_slot_id));
+                    if (slotIndex < 0) return;
+                    if (!availabilityMap[teacherId]) availabilityMap[teacherId] = {};
+                    if (!availabilityMap[teacherId][item.day_of_week]) availabilityMap[teacherId][item.day_of_week] = [];
+                    availabilityMap[teacherId][item.day_of_week].push(slotIndex);
+                    availabilityIdMap[`${teacherId}-${item.day_of_week}-${slotIndex}`] = String(item.id);
+                });
+                setAvailability(availabilityMap);
+                setAvailabilityIds(availabilityIdMap);
+
+                const scheduleMap: ScheduleMap = {};
+                const scheduleIdMap: Record<string, string> = {};
+                schedulesData.forEach((entry: any) => {
+                    const classId = String(entry.classroom_id);
+                    const slotIndex = slotItems.findIndex(slot => slot.id === String(entry.time_slot_id));
+                    if (slotIndex < 0) return;
+                    if (!scheduleMap[classId]) scheduleMap[classId] = {};
+                    if (!scheduleMap[classId][entry.day_of_week]) scheduleMap[classId][entry.day_of_week] = {};
+                    scheduleMap[classId][entry.day_of_week][slotIndex] = entry.subject;
+                    scheduleIdMap[`${classId}-${entry.day_of_week}-${slotIndex}`] = String(entry.id);
+                });
+                setSchedules(scheduleMap);
+                setScheduleIds(scheduleIdMap);
+            } catch (error) {
+                console.error("Failed to load schedule data", error);
+            }
+        };
+
+        loadScheduleData();
+    }, []);
 
     // --- Configuration Logic ---
-    const handleAddSlot = () => {
+    const handleAddSlot = async () => {
         if (!newSlotStart || !newSlotEnd) return;
         if (newSlotStart >= newSlotEnd) {
             alert("O horário de início deve ser anterior ao horário de fim.");
             return;
         }
-        const newSlot = `${newSlotStart} - ${newSlotEnd}`;
-        setTimeSlots([...timeSlots, newSlot].sort()); 
-        setNewSlotStart('');
-        setNewSlotEnd('');
+        try {
+            const created = await backend.createTimeSlot({
+                label: `${newSlotStart} - ${newSlotEnd}`,
+                start_time: newSlotStart,
+                end_time: newSlotEnd,
+                sort_order: timeSlots.length,
+            });
+            setTimeSlots([
+                ...timeSlots,
+                {
+                    id: String(created.id),
+                    label: created.label,
+                    start: created.start_time,
+                    end: created.end_time,
+                },
+            ]);
+            setNewSlotStart('');
+            setNewSlotEnd('');
+        } catch (error) {
+            console.error("Failed to add time slot", error);
+        }
     };
 
-    const handleDeleteSlot = (index: number) => {
-        const newSlots = timeSlots.filter((_, i) => i !== index);
-        setTimeSlots(newSlots);
+    const handleDeleteSlot = async (index: number) => {
+        const slot = timeSlots[index];
+        if (!slot) return;
+        try {
+            await backend.deleteTimeSlot(slot.id);
+            const newSlots = timeSlots.filter((_, i) => i !== index);
+            setTimeSlots(newSlots);
+        } catch (error) {
+            console.error("Failed to delete time slot", error);
+        }
     };
 
     const handlePrint = () => {
@@ -74,30 +208,46 @@ const ScheduleModule: React.FC = () => {
     };
 
     // --- Availability Logic ---
-    const toggleAvailability = (dayIndex: number, slotIndex: number) => {
+    const toggleAvailability = async (dayIndex: number, slotIndex: number) => {
         if (!selectedTeacherId) return;
+        const slot = timeSlots[slotIndex];
+        if (!slot) return;
 
-        setAvailability(prev => {
-            const teacherAvail = prev[selectedTeacherId] || {};
-            const dayAvail = teacherAvail[dayIndex] || [];
-            
-            const isUnavailable = dayAvail.includes(slotIndex);
-            
-            let newDayAvail;
+        const key = `${selectedTeacherId}-${dayIndex}-${slotIndex}`;
+        const isUnavailable = availability[selectedTeacherId]?.[dayIndex]?.includes(slotIndex);
+
+        try {
             if (isUnavailable) {
-                newDayAvail = dayAvail.filter(s => s !== slotIndex);
+                const availabilityId = availabilityIds[key];
+                if (availabilityId) {
+                    await backend.deleteAvailability(availabilityId);
+                }
             } else {
-                newDayAvail = [...dayAvail, slotIndex];
+                const created = await backend.setAvailability({
+                    teacher_id: selectedTeacherId,
+                    time_slot_id: slot.id,
+                    day_of_week: dayIndex,
+                });
+                setAvailabilityIds(prev => ({ ...prev, [key]: String(created.id) }));
             }
 
-            return {
-                ...prev,
-                [selectedTeacherId]: {
-                    ...teacherAvail,
-                    [dayIndex]: newDayAvail
-                }
-            };
-        });
+            setAvailability(prev => {
+                const teacherAvail = prev[selectedTeacherId] || {};
+                const dayAvail = teacherAvail[dayIndex] || [];
+                const newDayAvail = isUnavailable
+                    ? dayAvail.filter(s => s !== slotIndex)
+                    : [...dayAvail, slotIndex];
+                return {
+                    ...prev,
+                    [selectedTeacherId]: {
+                        ...teacherAvail,
+                        [dayIndex]: newDayAvail
+                    }
+                };
+            });
+        } catch (error) {
+            console.error("Failed to update availability", error);
+        }
     };
 
     const isSlotUnavailable = (teacherId: string, dayIndex: number, slotIndex: number) => {
@@ -107,32 +257,61 @@ const ScheduleModule: React.FC = () => {
     // --- Schedule Logic ---
     const selectedClass = classes.find(c => c.id === selectedClassId);
     
-    const handleSetSubject = (dayIndex: number, slotIndex: number, subject: string) => {
+    const handleSetSubject = async (dayIndex: number, slotIndex: number, subject: string) => {
         if (!selectedClassId) return;
-        setSchedules(prev => {
-             const classSched = prev[selectedClassId] || {};
-             const daySched = classSched[dayIndex] || {};
-             
-             if (daySched[slotIndex] === subject) {
-                 const newDaySched = { ...daySched };
-                 delete newDaySched[slotIndex];
-                 return {
-                     ...prev,
-                     [selectedClassId]: { ...classSched, [dayIndex]: newDaySched }
-                 };
-             }
+        const slot = timeSlots[slotIndex];
+        if (!slot) return;
+        const key = `${selectedClassId}-${dayIndex}-${slotIndex}`;
 
-             return {
-                 ...prev,
-                 [selectedClassId]: {
-                     ...classSched,
-                     [dayIndex]: {
-                         ...daySched,
-                         [slotIndex]: subject
-                     }
-                 }
-             };
-        });
+        try {
+            const current = schedules[selectedClassId]?.[dayIndex]?.[slotIndex];
+            if (current === subject || !subject) {
+                const scheduleId = scheduleIds[key];
+                if (scheduleId) {
+                    await backend.deleteSchedule(scheduleId);
+                }
+                setSchedules(prev => {
+                    const classSched = prev[selectedClassId] || {};
+                    const daySched = classSched[dayIndex] || {};
+                    const newDaySched = { ...daySched };
+                    delete newDaySched[slotIndex];
+                    return {
+                        ...prev,
+                        [selectedClassId]: { ...classSched, [dayIndex]: newDaySched }
+                    };
+                });
+                setScheduleIds(prev => {
+                    const updated = { ...prev };
+                    delete updated[key];
+                    return updated;
+                });
+                return;
+            }
+
+            const created = await backend.setSchedule({
+                classroom_id: selectedClassId,
+                time_slot_id: slot.id,
+                day_of_week: dayIndex,
+                subject,
+            });
+            setScheduleIds(prev => ({ ...prev, [key]: String(created.id) }));
+            setSchedules(prev => {
+                const classSched = prev[selectedClassId] || {};
+                const daySched = classSched[dayIndex] || {};
+                return {
+                    ...prev,
+                    [selectedClassId]: {
+                        ...classSched,
+                        [dayIndex]: {
+                            ...daySched,
+                            [slotIndex]: subject
+                        }
+                    }
+                };
+            });
+        } catch (error) {
+            console.error("Failed to update schedule", error);
+        }
     };
 
     const getScheduledSubject = (classId: string, dayIndex: number, slotIndex: number) => {
@@ -294,9 +473,9 @@ const ScheduleModule: React.FC = () => {
                                                 </div>
                                                 <div className="flex items-center gap-3 text-slate-800 font-medium">
                                                     <Clock size={16} className="text-indigo-500" />
-                                                    {slot.split(' - ')[0]} 
+                                                    {slot.start}
                                                     <ArrowRight size={14} className="text-slate-400" />
-                                                    {slot.split(' - ')[1]}
+                                                    {slot.end}
                                                 </div>
                                             </div>
                                             <button 
@@ -363,12 +542,12 @@ const ScheduleModule: React.FC = () => {
                                 ))}
 
                                 {/* Rows */}
-                                {timeSlots.map((time, slotIndex) => (
-                                    <React.Fragment key={time}>
+                                {timeSlots.map((slot, slotIndex) => (
+                                    <React.Fragment key={slot.id}>
                                         <div className="p-4 font-bold text-slate-600 text-xs flex flex-col items-center justify-center bg-slate-50 rounded-lg border border-slate-100">
-                                            <span>{time.split(' - ')[0]}</span>
+                                            <span>{slot.start}</span>
                                             <ArrowRight size={10} className="text-slate-300 my-1 rotate-90" />
-                                            <span>{time.split(' - ')[1]}</span>
+                                            <span>{slot.end}</span>
                                         </div>
                                         {DAYS.map((_, dayIndex) => {
                                             const scheduleItem = getTeacherPersonalSchedule[dayIndex]?.[slotIndex];
@@ -512,11 +691,11 @@ const ScheduleModule: React.FC = () => {
                                                 ))}
 
                                                 {/* Rows */}
-                                                {timeSlots.map((time, slotIndex) => (
-                                                    <React.Fragment key={time}>
+                                                {timeSlots.map((slot, slotIndex) => (
+                                                    <React.Fragment key={slot.id}>
                                                         <div className="p-3 font-semibold text-slate-500 text-xs flex items-center justify-center bg-slate-50 rounded border border-slate-100">
                                                             <Clock size={12} className="mr-1" />
-                                                            {time}
+                                                            {slot.label}
                                                         </div>
                                                         {DAYS.map((_, dayIndex) => {
                                                             // RENDER CELL LOGIC

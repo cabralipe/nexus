@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { School, Users, Briefcase, ChevronRight, Search, CheckSquare, ArrowRight, ArrowLeft, GraduationCap, Clock, AlertCircle, Edit, Save, X, GripVertical, Trash2, User, Layout, BookOpen, AlertTriangle } from 'lucide-react';
-import { MOCK_FULL_STUDENT_PROFILES, MOCK_STAFF, MOCK_SCHOOL_CLASSES } from '../constants';
 import { SchoolClass, StudentProfile, Staff } from '../types';
+import { backend } from '../services/backendService';
 
 const SUBJECTS_LIST = ['Matemática', 'Português', 'História', 'Geografia', 'Ciências', 'Inglês', 'Educação Física', 'Artes', 'Recreação', 'Desenvolvimento Cognitivo'];
 
@@ -15,9 +15,9 @@ const EDUCATION_LEVELS: Record<string, string[]> = {
 
 const ClassAllocationModule: React.FC = () => {
     // Local state managing the mock data (since we don't have a real backend context yet)
-    const [classes, setClasses] = useState<SchoolClass[]>(MOCK_SCHOOL_CLASSES);
-    const [students] = useState<StudentProfile[]>(MOCK_FULL_STUDENT_PROFILES);
-    const [staff] = useState<Staff[]>(MOCK_STAFF);
+    const [classes, setClasses] = useState<SchoolClass[]>([]);
+    const [students, setStudents] = useState<StudentProfile[]>([]);
+    const [staff, setStaff] = useState<Staff[]>([]);
 
     const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
     const [viewMode, setViewMode] = useState<'summary' | 'students' | 'teachers'>('summary');
@@ -33,6 +33,89 @@ const ClassAllocationModule: React.FC = () => {
 
     const selectedClass = classes.find(c => c.id === selectedClassId);
     const teachers = staff.filter(s => s.role === 'Teacher');
+
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                const [classesData, studentsData, staffData] = await Promise.all([
+                    backend.fetchClassrooms(),
+                    backend.fetchStudents(),
+                    backend.fetchStaff(),
+                ]);
+
+                const studentList: StudentProfile[] = studentsData.map((student: any) => ({
+                    id: String(student.id),
+                    name: [student.first_name, student.last_name].filter(Boolean).join(' ') || student.name,
+                    grade: student.grade || '',
+                    attendance: 100,
+                    tuitionStatus: (student.tuitionStatus || student.tuition_status || 'Pending') as StudentProfile['tuitionStatus'],
+                    dob: student.dob || student.birth_date || '',
+                    cpf: student.cpf || '',
+                    mainAddress: student.mainAddress || student.main_address || '',
+                    reserveAddress: student.reserveAddress || student.reserve_address || '',
+                    healthInfo: student.health_info || student.healthInfo || {
+                        allergies: [],
+                        medications: [],
+                        conditions: '',
+                        bloodType: '',
+                    },
+                    emergencyContacts: [],
+                }));
+
+                const staffList: Staff[] = staffData.map((member: any) => ({
+                    id: String(member.id),
+                    name: member.name,
+                    role: member.role,
+                    department: member.department || '',
+                    phone: member.phone || '',
+                    email: member.email || '',
+                    admissionDate: member.admissionDate || member.admission_date || '',
+                }));
+
+                const classStudentIds = await Promise.all(
+                    classesData.map(async (item: any) => {
+                        const ids = await backend.fetchClassroomStudents(String(item.id));
+                        return { id: String(item.id), studentIds: ids.map(String) };
+                    })
+                );
+                const studentIdsByClass = new Map(
+                    classStudentIds.map(({ id, studentIds }) => [id, studentIds])
+                );
+
+                const classAllocations = await Promise.all(
+                    classesData.map(async (item: any) => {
+                        const allocations = await backend.fetchAllocations(String(item.id));
+                        return { id: String(item.id), allocations };
+                    })
+                );
+                const allocationsByClass = new Map(
+                    classAllocations.map(({ id, allocations }) => [id, allocations])
+                );
+
+                const classesList: SchoolClass[] = classesData.map((cls: any) => ({
+                    id: String(cls.id),
+                    name: cls.name,
+                    gradeLevel: cls.gradeLevel || cls.grade || '',
+                    shift: cls.shift === 'morning' ? 'Morning' : cls.shift === 'afternoon' ? 'Afternoon' : 'Night',
+                    academicYear: cls.academicYear || cls.year,
+                    capacity: cls.capacity || 30,
+                    enrolledStudentIds: studentIdsByClass.get(String(cls.id)) || [],
+                    teacherAllocations: (allocationsByClass.get(String(cls.id)) || []).map((alloc: any) => ({
+                        subject: alloc.subject,
+                        teacherId: String(alloc.teacher_id),
+                    })),
+                }));
+
+                setStudents(studentList);
+                setStaff(staffList);
+                setClasses(classesList);
+            } catch (error) {
+                console.error("Failed to load class allocation data", error);
+            }
+        };
+
+        loadData();
+    }, []);
 
     // Filter Logic
     const enrolledStudents = useMemo(() => {
@@ -56,39 +139,64 @@ const ClassAllocationModule: React.FC = () => {
     }, [teachers, teacherSearch]);
 
     // Handlers
-    const handleToggleStudent = (classId: string, studentId: string) => {
-        setClasses(prev => prev.map(c => {
-            if (c.id !== classId) return c;
-            const isEnrolled = c.enrolledStudentIds.includes(studentId);
-            return {
-                ...c,
-                enrolledStudentIds: isEnrolled 
-                    ? c.enrolledStudentIds.filter(id => id !== studentId) 
-                    : [...c.enrolledStudentIds, studentId]
-            };
-        }));
+    const handleToggleStudent = async (classId: string, studentId: string) => {
+        const classItem = classes.find(c => c.id === classId);
+        if (!classItem) return;
+        const isEnrolled = classItem.enrolledStudentIds.includes(studentId);
+        try {
+            if (isEnrolled) {
+                await backend.removeClassroomStudent(classId, studentId);
+            } else {
+                await backend.addClassroomStudent(classId, studentId);
+            }
+            setClasses(prev => prev.map(c => {
+                if (c.id !== classId) return c;
+                return {
+                    ...c,
+                    enrolledStudentIds: isEnrolled
+                        ? c.enrolledStudentIds.filter(id => id !== studentId)
+                        : [...c.enrolledStudentIds, studentId]
+                };
+            }));
+        } catch (error) {
+            console.error("Failed to toggle student", error);
+        }
     };
 
-    const handleAssignTeacher = (classId: string, subject: string, teacherId: string) => {
-        setClasses(prev => prev.map(c => {
-            if (c.id !== classId) return c;
-            const existing = c.teacherAllocations.filter(t => t.subject !== subject);
-            if (!teacherId) return { ...c, teacherAllocations: existing };
-            return {
-                ...c,
-                teacherAllocations: [...existing, { subject, teacherId }]
-            };
-        }));
+    const handleAssignTeacher = async (classId: string, subject: string, teacherId: string) => {
+        try {
+            if (!teacherId) return;
+            await backend.setAllocation(classId, teacherId, subject);
+            setClasses(prev => prev.map(c => {
+                if (c.id !== classId) return c;
+                const existing = c.teacherAllocations.filter(t => t.subject !== subject);
+                return {
+                    ...c,
+                    teacherAllocations: [...existing, { subject, teacherId }]
+                };
+            }));
+        } catch (error) {
+            console.error("Failed to assign teacher", error);
+        }
     };
 
-    const handleRemoveTeacher = (classId: string, subject: string) => {
-        setClasses(prev => prev.map(c => {
-            if (c.id !== classId) return c;
-            return {
-                ...c,
-                teacherAllocations: c.teacherAllocations.filter(t => t.subject !== subject)
-            };
-        }));
+    const handleRemoveTeacher = async (classId: string, subject: string) => {
+        const allocation = classes
+            .find(c => c.id === classId)
+            ?.teacherAllocations.find(t => t.subject === subject);
+        if (!allocation) return;
+        try {
+            await backend.removeAllocation(classId, allocation.teacherId, subject);
+            setClasses(prev => prev.map(c => {
+                if (c.id !== classId) return c;
+                return {
+                    ...c,
+                    teacherAllocations: c.teacherAllocations.filter(t => t.subject !== subject)
+                };
+            }));
+        } catch (error) {
+            console.error("Failed to remove teacher allocation", error);
+        }
     };
 
     // Form Specific Drag and Drop Handlers
@@ -146,11 +254,27 @@ const ClassAllocationModule: React.FC = () => {
         }
     };
 
-    const handleSaveClass = () => {
+    const handleSaveClass = async () => {
         if (editFormData && selectedClassId) {
-            setClasses(prev => prev.map(c => c.id === selectedClassId ? editFormData : c));
-            setIsEditingClass(false);
-            setEditFormData(null);
+            try {
+                const shiftMap: Record<SchoolClass['shift'], string> = {
+                    Morning: 'morning',
+                    Afternoon: 'afternoon',
+                    Night: 'evening'
+                };
+                await backend.updateClassroom(selectedClassId, {
+                    name: editFormData.name,
+                    gradeLevel: editFormData.gradeLevel,
+                    academicYear: editFormData.academicYear,
+                    shift: shiftMap[editFormData.shift],
+                    capacity: editFormData.capacity
+                });
+                setClasses(prev => prev.map(c => c.id === selectedClassId ? editFormData : c));
+                setIsEditingClass(false);
+                setEditFormData(null);
+            } catch (error) {
+                console.error("Failed to update class", error);
+            }
         }
     };
 

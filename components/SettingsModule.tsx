@@ -1,24 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Save, Sliders, Calculator, Calendar, Building, Shield, Activity, Lock, CreditCard, Upload } from 'lucide-react';
 import { GradingConfig } from '../types';
 import { DEFAULT_GRADING_CONFIG } from '../constants';
 import { exportToCSV } from '../utils';
+import { backend } from '../services/backendService';
 
 type SettingsTab = 'pedagogical' | 'institution' | 'security';
 
-// Mock Data for Audit Logs
-const MOCK_AUDIT_LOGS = [
-    { id: '1', user: 'Carlos Roberto (Prof)', action: 'Alteração de Nota', detail: 'Aluno: Bruno Silva | Mat: 5.5 -> 6.0', date: '2023-10-24 14:30', ip: '192.168.1.45' },
-    { id: '2', user: 'Ana Souza (Coord)', action: 'Aprovação de Prova', detail: 'Prova Bimestral 3º Bim - Matemática', date: '2023-10-24 10:15', ip: '192.168.1.12' },
-    { id: '3', user: 'Roberto Santos (Admin)', action: 'Exclusão Financeira', detail: 'Removido lançamento ID #4421', date: '2023-10-23 18:45', ip: '200.145.2.1' },
-    { id: '4', user: 'Secretaria', action: 'Novo Cadastro', detail: 'Aluno: Julia Lima (9º Ano)', date: '2023-10-23 09:20', ip: '192.168.1.10' },
-    { id: '5', user: 'Carlos Roberto (Prof)', action: 'Login', detail: 'Acesso via Web', date: '2023-10-23 08:00', ip: '192.168.1.45' },
-];
 
 const SettingsModule: React.FC = () => {
     const [activeTab, setActiveTab] = useState<SettingsTab>('pedagogical');
     const [config, setConfig] = useState<GradingConfig>(DEFAULT_GRADING_CONFIG);
     const [saved, setSaved] = useState(false);
+    const [schoolId, setSchoolId] = useState<string | null>(null);
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
     // Institution State
     const [instData, setInstData] = useState({
@@ -30,14 +25,68 @@ const SettingsModule: React.FC = () => {
         paymentGateway: 'Asaas'
     });
 
-    const handleSave = () => {
-        // In a real app, this would persist to backend
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                const [gradingConfig, school, logs] = await Promise.all([
+                    backend.fetchGradingConfig(),
+                    backend.fetchSchool(),
+                    backend.fetchAuditLogs(),
+                ]);
+                if (gradingConfig) {
+                    setConfig({
+                        system: gradingConfig.system,
+                        calculationMethod: gradingConfig.calculation_method,
+                        minPassingGrade: Number(gradingConfig.min_passing_grade),
+                        weights: gradingConfig.weights || DEFAULT_GRADING_CONFIG.weights,
+                        recoveryRule: gradingConfig.recovery_rule || DEFAULT_GRADING_CONFIG.recoveryRule,
+                    });
+                }
+                if (school) {
+                    setSchoolId(String(school.id));
+                    setInstData(prev => ({
+                        ...prev,
+                        name: school.name || '',
+                        cnpj: school.cnpj || '',
+                        address: school.address_line1 || '',
+                        phone: school.phone || '',
+                    }));
+                }
+                setAuditLogs(logs);
+            } catch (error) {
+                console.error("Failed to load settings", error);
+            }
+        };
+
+        loadSettings();
+    }, []);
+
+    const handleSave = async () => {
+        try {
+            await backend.updateGradingConfig({
+                system: config.system,
+                calculation_method: config.calculationMethod,
+                min_passing_grade: config.minPassingGrade,
+                weights: config.weights,
+                recovery_rule: config.recoveryRule,
+            });
+            if (schoolId) {
+                await backend.updateSchool(schoolId, {
+                    name: instData.name,
+                    cnpj: instData.cnpj,
+                    phone: instData.phone,
+                    address_line1: instData.address,
+                });
+            }
+            setSaved(true);
+            setTimeout(() => setSaved(false), 3000);
+        } catch (error) {
+            console.error("Failed to save settings", error);
+        }
     };
 
     const handleExportLogs = () => {
-        exportToCSV(MOCK_AUDIT_LOGS, 'Auditoria_Logs');
+        exportToCSV(auditLogs, 'Auditoria_Logs');
     };
 
     const handleWeightChange = (key: keyof GradingConfig['weights'], value: number) => {
@@ -376,14 +425,14 @@ const SettingsModule: React.FC = () => {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {MOCK_AUDIT_LOGS.map(log => (
+                                    {auditLogs.map(log => (
                                         <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                                            <td className="px-6 py-4 text-slate-600 font-mono text-xs">{log.date}</td>
+                                            <td className="px-6 py-4 text-slate-600 font-mono text-xs">{log.created_at || log.date}</td>
                                             <td className="px-6 py-4 font-bold text-slate-700">{log.user}</td>
                                             <td className="px-6 py-4">
                                                 <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                                    log.action.includes('Exclusão') ? 'bg-rose-100 text-rose-700' :
-                                                    log.action.includes('Alteração') ? 'bg-yellow-100 text-yellow-700' :
+                                                    log.action.includes('deleted') ? 'bg-rose-100 text-rose-700' :
+                                                    log.action.includes('updated') ? 'bg-yellow-100 text-yellow-700' :
                                                     'bg-blue-100 text-blue-700'
                                                 }`}>
                                                     {log.action}

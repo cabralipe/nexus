@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { DollarSign, AlertTriangle, FileText, Send, Check, TrendingDown, TrendingUp, Plus, Calendar, Download } from 'lucide-react';
-import { MOCK_INVOICES, MOCK_TRANSACTIONS } from '../constants';
 import { generateInsight } from '../services/geminiService';
 import { exportToCSV } from '../utils';
+import { backend } from '../services/backendService';
 
 type Tab = 'receivables' | 'payables';
 
@@ -11,11 +11,56 @@ const FinancialModule: React.FC = () => {
     const [selectedInvoice, setSelectedInvoice] = useState<string | null>(null);
     const [messageDraft, setMessageDraft] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [cashflow, setCashflow] = useState<{ summary: any; monthly: any[] } | null>(null);
 
     // Expenses State
-    const [expenses, setExpenses] = useState(MOCK_TRANSACTIONS.filter(t => t.type === 'expense'));
+    const [invoices, setInvoices] = useState<any[]>([]);
+    const [expenses, setExpenses] = useState<any[]>([]);
     const [newExpense, setNewExpense] = useState({ description: '', category: '', amount: '', date: '' });
     const [isAddingExpense, setIsAddingExpense] = useState(false);
+
+    useEffect(() => {
+        const loadFinancial = async () => {
+            try {
+                const [invoiceData, studentsData, expenseData, cashflowData] = await Promise.all([
+                    backend.fetchInvoices(),
+                    backend.fetchStudents(),
+                    backend.fetchTransactions({ type: 'expense' }),
+                    backend.fetchCashflow(),
+                ]);
+                const studentMap = new Map(
+                    studentsData.map((student: any) => [
+                        String(student.id),
+                        [student.first_name, student.last_name].filter(Boolean).join(' ') || student.name,
+                    ])
+                );
+                setInvoices(
+                    invoiceData.map((inv: any) => ({
+                        id: String(inv.id),
+                        studentName: studentMap.get(String(inv.student_id)) || 'Aluno',
+                        amount: Number(inv.amount),
+                        dueDate: inv.due_date,
+                        status: inv.status === 'paid' ? 'Paid' : inv.status === 'overdue' ? 'Overdue' : 'Pending',
+                    }))
+                );
+                setExpenses(
+                    expenseData.map((tx: any) => ({
+                        id: String(tx.id),
+                        description: tx.description,
+                        category: tx.category,
+                        amount: Number(tx.amount),
+                        type: 'expense' as const,
+                        date: tx.date,
+                    }))
+                );
+                setCashflow(cashflowData);
+            } catch (error) {
+                console.error("Failed to load financial data", error);
+            }
+        };
+
+        loadFinancial();
+    }, []);
 
     const handleGenerateMessage = async (studentName: string) => {
         setIsGenerating(true);
@@ -26,7 +71,7 @@ const FinancialModule: React.FC = () => {
         setSelectedInvoice(studentName);
     };
 
-    const handleAddExpense = () => {
+    const handleAddExpense = async () => {
         if(!newExpense.description || !newExpense.amount) return;
         const expense = {
             id: Math.random().toString(),
@@ -36,14 +81,26 @@ const FinancialModule: React.FC = () => {
             type: 'expense' as const,
             date: newExpense.date || new Date().toISOString().split('T')[0]
         };
-        setExpenses([expense, ...expenses]);
-        setIsAddingExpense(false);
-        setNewExpense({ description: '', category: '', amount: '', date: '' });
+        try {
+            const created = await backend.createTransaction({
+                description: expense.description,
+                category: expense.category,
+                amount: expense.amount,
+                type: 'expense',
+                status: 'open',
+                date: expense.date,
+            });
+            setExpenses([{ ...expense, id: String(created.id) }, ...expenses]);
+            setIsAddingExpense(false);
+            setNewExpense({ description: '', category: '', amount: '', date: '' });
+        } catch (error) {
+            console.error("Failed to add expense", error);
+        }
     };
 
     const handleExportFinancial = () => {
         if (activeTab === 'receivables') {
-            exportToCSV(MOCK_INVOICES, 'Relatorio_Mensalidades');
+            exportToCSV(invoices, 'Relatorio_Mensalidades');
         } else {
             exportToCSV(expenses, 'Relatorio_Despesas');
         }
@@ -99,7 +156,7 @@ const FinancialModule: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {MOCK_INVOICES.map((inv) => (
+                                {invoices.map((inv) => (
                                     <tr key={inv.id} className="hover:bg-slate-50 transition-colors">
                                         <td className="px-6 py-4 font-medium text-slate-800">{inv.studentName}</td>
                                         <td className="px-6 py-4 text-slate-500">{new Date(inv.dueDate).toLocaleDateString('pt-BR')}</td>
@@ -232,19 +289,25 @@ const FinancialModule: React.FC = () => {
                     <div className="space-y-6">
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                              <h3 className="font-bold text-slate-800 mb-4">Resumo do Mês</h3>
-                             <div className="space-y-4">
+                            <div className="space-y-4">
                                 <div className="flex justify-between items-center p-3 bg-emerald-50 rounded-lg border border-emerald-100">
                                     <span className="text-sm text-emerald-800 font-medium">Total Receitas</span>
-                                    <span className="font-bold text-emerald-700">R$ 145.000,00</span>
+                                    <span className="font-bold text-emerald-700">
+                                        R$ {Number(cashflow?.summary?.income || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between items-center p-3 bg-rose-50 rounded-lg border border-rose-100">
                                     <span className="text-sm text-rose-800 font-medium">Total Despesas</span>
-                                    <span className="font-bold text-rose-700">R$ {expenses.reduce((acc, curr) => acc + curr.amount, 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
+                                    <span className="font-bold text-rose-700">
+                                        R$ {Number(cashflow?.summary?.expense || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                    </span>
                                 </div>
                                 <div className="border-t border-slate-100 pt-4 mt-2">
                                      <div className="flex justify-between items-center">
                                         <span className="text-sm text-slate-600 font-bold">Saldo Previsto</span>
-                                        <span className="text-xl font-bold text-slate-800">R$ 96.300,00</span>
+                                        <span className="text-xl font-bold text-slate-800">
+                                            R$ {Number(cashflow?.summary?.net || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                                        </span>
                                     </div>
                                 </div>
                              </div>

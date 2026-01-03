@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MessageCircle, Bell, Plus, Search, User, Send as SendIcon } from 'lucide-react';
-import { MOCK_NOTICES, MOCK_STUDENTS } from '../constants';
 import { generateInsight } from '../services/geminiService';
+import { backend } from '../services/backendService';
 
 type Tab = 'notices' | 'chat';
 
@@ -10,14 +10,40 @@ const CommunicationModule: React.FC = () => {
     const [isWriting, setIsWriting] = useState(false);
     const [topic, setTopic] = useState('');
     const [generatedNotice, setGeneratedNotice] = useState('');
+    const [notices, setNotices] = useState<any[]>([]);
+    const [students, setStudents] = useState<any[]>([]);
+    const [conversations, setConversations] = useState<any[]>([]);
 
     // Chat State
     const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+    const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
     const [chatMessage, setChatMessage] = useState('');
-    const [chats, setChats] = useState<Record<string, { sender: string, text: string, time: string }[]>>({
-        '1': [{ sender: 'school', text: 'Olá, mãe da Alice. Tudo bem?', time: '10:00' }, { sender: 'parent', text: 'Tudo ótimo! Recebi o boleto.', time: '10:05' }],
-        '2': [{ sender: 'school', text: 'Sr. Bruno precisa trazer o documento pendente.', time: '09:00' }]
-    });
+    const [messages, setMessages] = useState<{ sender: string, text: string, time: string }[]>([]);
+
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                const [noticesData, studentsData, conversationsData] = await Promise.all([
+                    backend.fetchNotices(),
+                    backend.fetchStudents(),
+                    backend.fetchConversations(),
+                ]);
+                setNotices(noticesData);
+                setStudents(
+                    studentsData.map((student: any) => ({
+                        id: String(student.id),
+                        name: [student.first_name, student.last_name].filter(Boolean).join(' ') || student.name,
+                        grade: student.grade || '',
+                    }))
+                );
+                setConversations(conversationsData);
+            } catch (error) {
+                console.error("Failed to load communication data", error);
+            }
+        };
+
+        loadData();
+    }, []);
 
     const handleDraftNotice = async () => {
         setIsWriting(true);
@@ -27,12 +53,45 @@ const CommunicationModule: React.FC = () => {
         setIsWriting(false);
     };
 
-    const handleSendMessage = () => {
-        if (!selectedContactId || !chatMessage) return;
-        const currentChat = chats[selectedContactId] || [];
-        const newMessage = { sender: 'school', text: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-        setChats({ ...chats, [selectedContactId]: [...currentChat, newMessage] });
-        setChatMessage('');
+    const handleSendMessage = async () => {
+        if (!selectedContactId || !selectedConversationId || !chatMessage) return;
+        try {
+            const created = await backend.sendMessage(selectedConversationId, {
+                text: chatMessage,
+                sender_type: 'school',
+            });
+            const newMessage = {
+                sender: 'school',
+                text: created.text,
+                time: new Date(created.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+            setMessages(prev => [...prev, newMessage]);
+            setChatMessage('');
+        } catch (error) {
+            console.error("Failed to send message", error);
+        }
+    };
+
+    const handleSelectContact = async (studentId: string) => {
+        setSelectedContactId(studentId);
+        try {
+            const existing = conversations.find((conv) => String(conv.student_id) === String(studentId));
+            const conversation = existing || await backend.createConversation({ student_id: studentId });
+            if (!existing) {
+                setConversations((prev) => [...prev, conversation]);
+            }
+            setSelectedConversationId(String(conversation.id));
+            const messagesData = await backend.fetchMessages(String(conversation.id));
+            setMessages(
+                messagesData.map((msg: any) => ({
+                    sender: msg.sender_type,
+                    text: msg.text,
+                    time: new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                }))
+            );
+        } catch (error) {
+            console.error("Failed to load conversation", error);
+        }
     };
 
     return (
@@ -67,11 +126,14 @@ const CommunicationModule: React.FC = () => {
                                 <Plus size={18} /> Novo Comunicado
                             </button>
                          </div>
-                        {MOCK_NOTICES.map((notice) => (
+                        {notices.map((notice) => {
+                            const normalizedType = String(notice.type || '').toLowerCase();
+                            const label = normalizedType === 'urgent' ? 'Urgent' : normalizedType === 'academic' ? 'Academic' : 'General';
+                            return (
                             <div key={notice.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex gap-4">
                                 <div className={`mt-1 p-3 rounded-full h-fit ${
-                                    notice.type === 'Urgent' ? 'bg-rose-100 text-rose-600' :
-                                    notice.type === 'Academic' ? 'bg-blue-100 text-blue-600' :
+                                    label === 'Urgent' ? 'bg-rose-100 text-rose-600' :
+                                    label === 'Academic' ? 'bg-blue-100 text-blue-600' :
                                     'bg-slate-100 text-slate-600'
                                 }`}>
                                     <Bell size={20} />
@@ -85,11 +147,11 @@ const CommunicationModule: React.FC = () => {
                                             </span>
                                         </div>
                                         <span className={`text-xs px-2 py-1 rounded font-medium border ${
-                                             notice.type === 'Urgent' ? 'border-rose-200 text-rose-700' :
-                                             notice.type === 'Academic' ? 'border-blue-200 text-blue-700' :
+                                             label === 'Urgent' ? 'border-rose-200 text-rose-700' :
+                                             label === 'Academic' ? 'border-blue-200 text-blue-700' :
                                              'border-slate-200 text-slate-700'
                                         }`}>
-                                            {notice.type}
+                                            {label}
                                         </span>
                                     </div>
                                     <p className="text-slate-600 text-sm leading-relaxed">
@@ -97,7 +159,7 @@ const CommunicationModule: React.FC = () => {
                                     </p>
                                 </div>
                             </div>
-                        ))}
+                        )})}
                     </div>
 
                     {/* AI Composer */}
@@ -151,10 +213,10 @@ const CommunicationModule: React.FC = () => {
                             </div>
                         </div>
                         <div className="flex-1 overflow-y-auto">
-                            {MOCK_STUDENTS.map(student => (
+                            {students.map(student => (
                                 <button 
                                     key={student.id}
-                                    onClick={() => setSelectedContactId(student.id)}
+                                    onClick={() => handleSelectContact(student.id)}
                                     className={`w-full text-left p-4 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex items-center gap-3 transition-colors ${selectedContactId === student.id ? 'bg-indigo-50' : ''}`}
                                 >
                                     <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold">
@@ -165,7 +227,7 @@ const CommunicationModule: React.FC = () => {
                                             <h4 className="font-semibold text-sm text-slate-800 truncate">{student.name}</h4>
                                             <span className="text-[10px] text-slate-400">10:05</span>
                                         </div>
-                                        <p className="text-xs text-slate-500 truncate">Responsável: {student.name === 'Alice Ferreira' ? 'Maria' : 'Pai/Mãe'}</p>
+                                            <p className="text-xs text-slate-500 truncate">Responsável: Pai/Mãe</p>
                                     </div>
                                 </button>
                             ))}
@@ -179,17 +241,17 @@ const CommunicationModule: React.FC = () => {
                                 <div className="p-4 bg-white border-b border-slate-100 flex justify-between items-center">
                                     <div className="flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
-                                            {MOCK_STUDENTS.find(s => s.id === selectedContactId)?.name.substring(0,2).toUpperCase()}
+                                            {students.find(s => s.id === selectedContactId)?.name.substring(0,2).toUpperCase()}
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-slate-800 text-sm">{MOCK_STUDENTS.find(s => s.id === selectedContactId)?.name}</h3>
+                                            <h3 className="font-bold text-slate-800 text-sm">{students.find(s => s.id === selectedContactId)?.name}</h3>
                                             <span className="text-xs text-slate-500 flex items-center gap-1"><span className="w-2 h-2 bg-emerald-500 rounded-full"></span> Online</span>
                                         </div>
                                     </div>
                                     <button className="text-slate-400 hover:text-indigo-600"><User size={20} /></button>
                                 </div>
                                 <div className="flex-1 p-4 overflow-y-auto space-y-4">
-                                    {chats[selectedContactId]?.map((msg, idx) => (
+                                    {messages.map((msg, idx) => (
                                         <div key={idx} className={`flex ${msg.sender === 'school' ? 'justify-end' : 'justify-start'}`}>
                                             <div className={`max-w-[70%] p-3 rounded-xl text-sm ${msg.sender === 'school' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white border border-slate-200 text-slate-700 rounded-bl-none'}`}>
                                                 <p>{msg.text}</p>
@@ -197,7 +259,7 @@ const CommunicationModule: React.FC = () => {
                                             </div>
                                         </div>
                                     ))}
-                                    {!chats[selectedContactId] && (
+                                    {!messages.length && (
                                         <div className="text-center text-slate-400 text-sm mt-10">Nenhuma mensagem anterior.</div>
                                     )}
                                 </div>

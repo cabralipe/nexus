@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BookOpen, Calendar, Clock, Download, CheckCircle, XCircle, FileText, Plus, Save, Edit, Trash2, FolderOpen, Video, File, ExternalLink, Paperclip, Eraser, ScrollText, Target, Book, Search } from 'lucide-react';
-import { MOCK_GRADES, MOCK_STUDENTS, MOCK_DIARY_ENTRIES } from '../constants';
-import { ClassDiaryEntry, GradeRecord } from '../types';
+import { ClassDiaryEntry, GradeRecord, SchoolClass, StudentProfile } from '../types';
 import { exportToCSV } from '../utils';
+import { backend } from '../services/backendService';
 
 type Tab = 'grades' | 'attendance' | 'diary' | 'materials' | 'syllabus';
 
@@ -19,13 +19,16 @@ const AcademicModule: React.FC = () => {
     const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
     // Simple state to track attendance checkboxes (id -> status)
     const [attendanceState, setAttendanceState] = useState<Record<string, string>>({});
+    const [classes, setClasses] = useState<SchoolClass[]>([]);
+    const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+    const [students, setStudents] = useState<StudentProfile[]>([]);
     
     // Grade State
-    const [gradesData, setGradesData] = useState<GradeRecord[]>(MOCK_GRADES);
+    const [gradesData, setGradesData] = useState<GradeRecord[]>([]);
     const [isSavingGrades, setIsSavingGrades] = useState(false);
     
     // Diary States
-    const [diaryEntries, setDiaryEntries] = useState<ClassDiaryEntry[]>(MOCK_DIARY_ENTRIES);
+    const [diaryEntries, setDiaryEntries] = useState<ClassDiaryEntry[]>([]);
     const [newEntry, setNewEntry] = useState({ date: '', topic: '', description: '', homework: '' });
     const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
     const [diarySearchTerm, setDiarySearchTerm] = useState('');
@@ -33,41 +36,138 @@ const AcademicModule: React.FC = () => {
     // Materials State
     const [materials, setMaterials] = useState([
         { id: '1', title: 'Lista de Exercícios - Álgebra', type: 'PDF', date: '2023-10-20', size: '1.2 MB' },
-        { id: '2', title: 'Videoaula: Equações 2º Grau', type: 'Video', date: '2023-10-18', url: 'https://youtube.com/...' },
-        { id: '3', title: 'Slides - Introdução à Física', type: 'PPT', date: '2023-10-15', size: '5.4 MB' },
     ]);
     const [newMaterialTitle, setNewMaterialTitle] = useState('');
+    const [materialFile, setMaterialFile] = useState<File | null>(null);
 
     // Syllabus State
-    const [syllabi, setSyllabi] = useState<Syllabus[]>([
-        {
-            id: '1',
-            subject: 'Matemática',
-            description: 'O curso de Matemática para o 9º ano foca na consolidação do raciocínio algébrico e na introdução de conceitos avançados de geometria e funções. Busca-se desenvolver a capacidade de resolução de problemas complexos e a aplicação prática dos conceitos matemáticos no cotidiano.',
-            objectives: [
-                'Compreender e resolver equações do 2º grau.',
-                'Analisar e construir gráficos de funções afins e quadráticas.',
-                'Aplicar o Teorema de Pitágoras e relações trigonométricas.',
-                'Interpretar dados estatísticos e noções de probabilidade.'
-            ],
-            bibliography: 'DANTE, Luiz Roberto. Matemática: Contexto e Aplicações. Editora Ática.\nIEZZI, Gelson. Matemática e Realidade. Editora Atual.'
-        },
-        {
-            id: '2',
-            subject: 'Física',
-            description: 'Introdução aos fenômenos físicos fundamentais, com ênfase na Mecânica Clássica e noções de Energia. O curso adota uma abordagem experimental e investigativa.',
-            objectives: [
-                'Diferenciar grandeza escalar de vetorial.',
-                'Compreender os conceitos de cinemática: velocidade e aceleração.',
-                'Aplicar as Leis de Newton em situações práticas.',
-                'Entender a conservação de energia mecânica.'
-            ],
-            bibliography: 'HALLIDAY, David. Fundamentos de Física. Editora LTC.\nGASPAR, Alberto. Física Série Brasil. Editora Ática.'
-        }
-    ]);
-    const [selectedSyllabusId, setSelectedSyllabusId] = useState<string>('1');
+    const [syllabi, setSyllabi] = useState<Syllabus[]>([]);
+    const [selectedSyllabusId, setSelectedSyllabusId] = useState<string>('');
     const [isEditingSyllabus, setIsEditingSyllabus] = useState(false);
     const [syllabusFormData, setSyllabusFormData] = useState<Syllabus | null>(null);
+
+    useEffect(() => {
+        const loadInitial = async () => {
+            try {
+                const [classesData, studentsData, syllabiData] = await Promise.all([
+                    backend.fetchClassrooms(),
+                    backend.fetchStudents(),
+                    backend.fetchSyllabi(),
+                ]);
+                const classesList: SchoolClass[] = classesData.map((cls: any) => ({
+                    id: String(cls.id),
+                    name: cls.name,
+                    gradeLevel: cls.gradeLevel || cls.grade || '',
+                    shift: cls.shift === 'morning' ? 'Morning' : cls.shift === 'afternoon' ? 'Afternoon' : 'Night',
+                    academicYear: cls.academicYear || cls.year,
+                    capacity: cls.capacity || 30,
+                    enrolledStudentIds: [],
+                    teacherAllocations: [],
+                }));
+                setClasses(classesList);
+                setSelectedClassId(classesList[0]?.id || null);
+
+                const studentList: StudentProfile[] = studentsData.map((student: any) => ({
+                    id: String(student.id),
+                    name: [student.first_name, student.last_name].filter(Boolean).join(' ') || student.name,
+                    grade: student.grade || '',
+                    attendance: 100,
+                    tuitionStatus: (student.tuitionStatus || student.tuition_status || 'Pending') as StudentProfile['tuitionStatus'],
+                    dob: student.dob || student.birth_date || '',
+                    cpf: student.cpf || '',
+                    mainAddress: student.mainAddress || student.main_address || '',
+                    reserveAddress: student.reserveAddress || student.reserve_address || '',
+                    healthInfo: student.health_info || student.healthInfo || {
+                        allergies: [],
+                        medications: [],
+                        conditions: '',
+                        bloodType: '',
+                    },
+                    emergencyContacts: [],
+                }));
+                setStudents(studentList);
+
+                const syllabiList = syllabiData.map((item: any) => ({
+                    id: String(item.id),
+                    subject: item.subject,
+                    description: item.description || '',
+                    objectives: item.objectives || [],
+                    bibliography: item.bibliography || '',
+                }));
+                setSyllabi(syllabiList);
+                if (syllabiList[0]) {
+                    setSelectedSyllabusId(syllabiList[0].id);
+                }
+            } catch (error) {
+                console.error("Failed to load academic data", error);
+            }
+        };
+
+        loadInitial();
+    }, []);
+
+    useEffect(() => {
+        if (!selectedClassId) return;
+        const loadClassData = async () => {
+            try {
+                const [grades, attendance, diary, materialsList] = await Promise.all([
+                    backend.fetchGrades({ classroom_id: selectedClassId }),
+                    backend.fetchAttendance({ classroom_id: selectedClassId, date: attendanceDate }),
+                    backend.fetchDiaryEntries({ classroom_id: selectedClassId }),
+                    backend.fetchMaterials({ classroom_id: selectedClassId }),
+                ]);
+
+                const studentMap = new Map(students.map(s => [s.id, s.name]));
+                const mappedGrades: any[] = grades.map((record: any) => ({
+                    id: String(record.id),
+                    studentName: studentMap.get(String(record.student_id)) || 'Aluno',
+                    subject: record.subject,
+                    grade1: record.grade1 ?? 0,
+                    grade2: record.grade2 ?? 0,
+                    recoveryGrade: record.recovery_grade ?? null,
+                    average: record.average ?? 0,
+                    finalGrade: record.final_grade ?? record.average ?? 0,
+                    term: record.term || '',
+                    date: record.date || '',
+                    studentId: String(record.student_id),
+                    classroomId: String(record.classroom_id),
+                }));
+                setGradesData(mappedGrades);
+
+                const attendanceMap: Record<string, string> = {};
+                attendance.forEach((item: any) => {
+                    attendanceMap[String(item.student_id)] = item.status;
+                });
+                setAttendanceState(attendanceMap);
+
+                setDiaryEntries(
+                    diary.map((entry: any) => ({
+                        id: String(entry.id),
+                        date: entry.date,
+                        subject: entry.subject,
+                        topic: entry.topic,
+                        description: entry.description,
+                        homework: entry.homework,
+                    }))
+                );
+
+                setMaterials(
+                    materialsList.map((item: any) => ({
+                        id: String(item.id),
+                        title: item.title,
+                        type: item.type || 'PDF',
+                        date: item.date,
+                        size: item.size,
+                        url: item.url,
+                    }))
+                );
+            } catch (error) {
+                console.error("Failed to load class academic data", error);
+            }
+        };
+
+        loadClassData();
+    }, [selectedClassId, attendanceDate, students]);
 
     // --- Grades Logic ---
     const handleGradeChange = (id: string, field: 'grade1' | 'grade2', value: string) => {
@@ -82,7 +182,7 @@ const AcademicModule: React.FC = () => {
                 const g1 = typeof updatedRecord.grade1 === 'number' ? updatedRecord.grade1 : 0;
                 const g2 = typeof updatedRecord.grade2 === 'number' ? updatedRecord.grade2 : 0;
                 
-                // Simple arithmetic average logic (can be replaced by config logic later)
+                // Simple arithmetic average logic (backend recalculates final grade)
                 updatedRecord.average = (g1 + g2) / 2;
                 
                 return updatedRecord;
@@ -91,13 +191,27 @@ const AcademicModule: React.FC = () => {
         }));
     };
 
-    const handleSaveGrades = () => {
+    const handleSaveGrades = async () => {
+        if (!selectedClassId) return;
         setIsSavingGrades(true);
-        // Simulate API call
-        setTimeout(() => {
+        try {
+            const payloads = gradesData.map((record: any) => ({
+                student_id: record.studentId,
+                classroom_id: record.classroomId || selectedClassId,
+                subject: record.subject,
+                grade1: record.grade1,
+                grade2: record.grade2,
+                recovery_grade: record.recoveryGrade,
+                term: record.term,
+                date: record.date || attendanceDate,
+            }));
+            await Promise.all(payloads.map(payload => backend.upsertGrade(payload)));
             setIsSavingGrades(false);
             alert('Notas salvas com sucesso!');
-        }, 800);
+        } catch (error) {
+            console.error("Failed to save grades", error);
+            setIsSavingGrades(false);
+        }
     };
 
     const handleExportGrades = () => {
@@ -112,11 +226,22 @@ const AcademicModule: React.FC = () => {
     };
 
     // --- Attendance Logic ---
-    const toggleAttendance = (studentId: string, status: 'present' | 'absent') => {
-        setAttendanceState(prev => ({
-            ...prev,
-            [studentId]: status
-        }));
+    const toggleAttendance = async (studentId: string, status: 'present' | 'absent') => {
+        if (!selectedClassId) return;
+        try {
+            await backend.upsertAttendance({
+                student_id: studentId,
+                classroom_id: selectedClassId,
+                date: attendanceDate,
+                status
+            });
+            setAttendanceState(prev => ({
+                ...prev,
+                [studentId]: status
+            }));
+        } catch (error) {
+            console.error("Failed to update attendance", error);
+        }
     };
 
     // --- Diary Logic ---
@@ -130,12 +255,17 @@ const AcademicModule: React.FC = () => {
         setEditingEntryId(entry.id);
     };
 
-    const handleDeleteEntry = (e: React.MouseEvent, id: string) => {
+    const handleDeleteEntry = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         if (confirm('Tem certeza que deseja excluir este registro de aula?')) {
-            setDiaryEntries(diaryEntries.filter(entry => entry.id !== id));
-            if (editingEntryId === id) {
-                handleCancelEdit();
+            try {
+                await backend.deleteDiaryEntry(id);
+                setDiaryEntries(diaryEntries.filter(entry => entry.id !== id));
+                if (editingEntryId === id) {
+                    handleCancelEdit();
+                }
+            } catch (error) {
+                console.error("Failed to delete diary entry", error);
             }
         }
     };
@@ -145,28 +275,51 @@ const AcademicModule: React.FC = () => {
         setEditingEntryId(null);
     };
 
-    const handleSaveDiary = () => {
+    const handleSaveDiary = async () => {
         // Validation
         if (!newEntry.date || !newEntry.topic) {
             alert("Por favor, preencha a Data e o Tópico da aula.");
             return;
         }
 
-        if (editingEntryId) {
-            setDiaryEntries(diaryEntries.map(entry => 
-                entry.id === editingEntryId 
-                ? { ...entry, ...newEntry }
-                : entry
-            ));
-            handleCancelEdit();
-        } else {
-            const entry: ClassDiaryEntry = {
-                id: Math.random().toString(36).substr(2, 9),
-                subject: 'Matemática', // Inherited from context/dropdown
-                ...newEntry
-            };
-            setDiaryEntries([entry, ...diaryEntries]);
-            setNewEntry({ date: '', topic: '', description: '', homework: '' });
+        if (!selectedClassId) return;
+
+        try {
+            if (editingEntryId) {
+                const updated = await backend.updateDiaryEntry(editingEntryId, {
+                    date: newEntry.date,
+                    topic: newEntry.topic,
+                    description: newEntry.description,
+                    homework: newEntry.homework,
+                });
+                setDiaryEntries(diaryEntries.map(entry => 
+                    entry.id === editingEntryId 
+                    ? { ...entry, ...updated }
+                    : entry
+                ));
+                handleCancelEdit();
+            } else {
+                const created = await backend.createDiaryEntry({
+                    classroom_id: selectedClassId,
+                    subject: 'Matemática',
+                    date: newEntry.date,
+                    topic: newEntry.topic,
+                    description: newEntry.description,
+                    homework: newEntry.homework,
+                });
+                const entry: ClassDiaryEntry = {
+                    id: String(created.id),
+                    subject: created.subject,
+                    date: created.date,
+                    topic: created.topic,
+                    description: created.description,
+                    homework: created.homework,
+                };
+                setDiaryEntries([entry, ...diaryEntries]);
+                setNewEntry({ date: '', topic: '', description: '', homework: '' });
+            }
+        } catch (error) {
+            console.error("Failed to save diary entry", error);
         }
     };
 
@@ -175,10 +328,44 @@ const AcademicModule: React.FC = () => {
         entry.description.toLowerCase().includes(diarySearchTerm.toLowerCase())
     );
 
-    const handleAddMaterial = () => {
-        if(!newMaterialTitle) return;
-        setMaterials([{ id: Math.random().toString(), title: newMaterialTitle, type: 'PDF', date: new Date().toISOString().split('T')[0], size: '0.5 MB' }, ...materials]);
-        setNewMaterialTitle('');
+    const handleAddMaterial = async () => {
+        if (!newMaterialTitle || !selectedClassId) return;
+        try {
+            const created = await backend.createMaterial({
+                classroom_id: selectedClassId,
+                title: newMaterialTitle,
+                type: 'PDF',
+                date: new Date().toISOString().split('T')[0],
+                size: '0.5 MB',
+            });
+            let uploadUrl = '';
+            if (materialFile) {
+                const formData = new FormData();
+                formData.append('entity_type', 'material');
+                formData.append('entity_id', String(created.id));
+                formData.append('file', materialFile);
+                const upload = await backend.uploadFile(formData);
+                uploadUrl = upload.url || '';
+                if (uploadUrl) {
+                    await backend.updateMaterial(String(created.id), { url: uploadUrl });
+                }
+            }
+            setMaterials([
+                {
+                    id: String(created.id),
+                    title: created.title,
+                    type: created.type,
+                    date: created.date,
+                    size: created.size,
+                    url: uploadUrl || created.url,
+                },
+                ...materials,
+            ]);
+            setNewMaterialTitle('');
+            setMaterialFile(null);
+        } catch (error) {
+            console.error("Failed to add material", error);
+        }
     };
 
     // --- Syllabus Logic ---
@@ -190,11 +377,16 @@ const AcademicModule: React.FC = () => {
         }
     };
 
-    const handleSaveSyllabus = () => {
+    const handleSaveSyllabus = async () => {
         if (!syllabusFormData) return;
-        setSyllabi(prev => prev.map(s => s.id === syllabusFormData.id ? syllabusFormData : s));
-        setIsEditingSyllabus(false);
-        setSyllabusFormData(null);
+        try {
+            const updated = await backend.updateSyllabus(syllabusFormData.id, syllabusFormData);
+            setSyllabi(prev => prev.map(s => s.id === syllabusFormData.id ? updated : s));
+            setIsEditingSyllabus(false);
+            setSyllabusFormData(null);
+        } catch (error) {
+            console.error("Failed to save syllabus", error);
+        }
     };
 
     const handleObjectivesChange = (text: string) => {
@@ -214,10 +406,16 @@ const AcademicModule: React.FC = () => {
                     <p className="text-slate-500">Gerencie notas, frequência e conteúdo de aulas.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <select className="bg-white border border-slate-200 text-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
-                        <option>9º Ano A - Matemática</option>
-                        <option>9º Ano B - Matemática</option>
-                        <option>8º Ano C - Física</option>
+                    <select
+                        className="bg-white border border-slate-200 text-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
+                        value={selectedClassId || ''}
+                        onChange={(e) => setSelectedClassId(e.target.value)}
+                    >
+                        {classes.map((cls) => (
+                            <option key={cls.id} value={cls.id}>
+                                {cls.name}
+                            </option>
+                        ))}
                     </select>
                 </div>
             </div>
@@ -313,13 +511,13 @@ const AcademicModule: React.FC = () => {
                                         />
                                     </td>
                                     <td className="px-6 py-4 text-center font-bold text-slate-800">
-                                        {record.average.toFixed(1)}
+                                            {(record.finalGrade ?? record.average).toFixed(1)}
                                     </td>
                                     <td className="px-6 py-4 text-center">
                                         <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                                            record.average >= 7 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
+                                            (record.finalGrade ?? record.average) >= 7 ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
                                         }`}>
-                                            {record.average >= 7 ? 'Aprovado' : 'Recuperação'}
+                                            {(record.finalGrade ?? record.average) >= 7 ? 'Aprovado' : 'Recuperação'}
                                         </span>
                                     </td>
                                 </tr>
@@ -353,12 +551,12 @@ const AcademicModule: React.FC = () => {
                             />
                         </div>
                         <div className="text-sm text-slate-500">
-                            Total de Alunos: <span className="font-bold text-slate-800">{MOCK_STUDENTS.length}</span>
+                            Total de Alunos: <span className="font-bold text-slate-800">{students.length}</span>
                         </div>
                     </div>
 
                     <div className="divide-y divide-slate-100">
-                        {MOCK_STUDENTS.map((student) => (
+                        {students.map((student) => (
                             <div key={student.id} className="p-4 flex items-center justify-between hover:bg-slate-50">
                                 <div className="flex items-center gap-3">
                                      <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-sm">
@@ -583,10 +781,17 @@ const AcademicModule: React.FC = () => {
                                     onChange={e => setNewMaterialTitle(e.target.value)}
                                 />
                             </div>
-                            <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center hover:bg-slate-50 cursor-pointer transition-colors">
+                            <label className="border-2 border-dashed border-slate-200 rounded-lg p-6 text-center hover:bg-slate-50 cursor-pointer transition-colors block">
                                 <Paperclip size={24} className="mx-auto mb-2 text-slate-400" />
-                                <p className="text-xs text-slate-500">Arraste um arquivo ou clique para selecionar (PDF, DOCX, PPT)</p>
-                            </div>
+                                <p className="text-xs text-slate-500">
+                                    {materialFile ? materialFile.name : "Arraste um arquivo ou clique para selecionar (PDF, DOCX, PPT)"}
+                                </p>
+                                <input
+                                    type="file"
+                                    className="hidden"
+                                    onChange={(e) => setMaterialFile(e.target.files?.[0] || null)}
+                                />
+                            </label>
                             <button 
                                 onClick={handleAddMaterial}
                                 className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 text-sm"
@@ -610,9 +815,15 @@ const AcademicModule: React.FC = () => {
                                             <div className={`p-2 rounded-lg ${item.type === 'Video' ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}`}>
                                                 {item.type === 'Video' ? <Video size={20} /> : <File size={20} />}
                                             </div>
-                                            <button className="text-slate-400 hover:text-indigo-600">
+                                        {item.url ? (
+                                            <a className="text-slate-400 hover:text-indigo-600" href={item.url} target="_blank" rel="noreferrer">
+                                                <ExternalLink size={16} />
+                                            </a>
+                                        ) : (
+                                            <button className="text-slate-300 cursor-not-allowed" disabled>
                                                 <ExternalLink size={16} />
                                             </button>
+                                        )}
                                         </div>
                                         <h4 className="font-bold text-slate-700 text-sm mb-1 line-clamp-2">{item.title}</h4>
                                         <div className="flex justify-between items-center text-xs text-slate-500 mt-2">

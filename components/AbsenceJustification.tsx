@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, ClipboardCheck, Upload, CheckCircle, Calendar, AlertTriangle, FileText, X } from 'lucide-react';
 import { MOCK_STUDENTS, MOCK_ABSENCES } from '../constants';
 import { Absence } from '../types';
+import { backend } from '../services/backendService';
 
 const AbsenceJustification: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
@@ -12,7 +13,7 @@ const AbsenceJustification: React.FC = () => {
     const [justificationReason, setJustificationReason] = useState('');
     const [justificationObservation, setJustificationObservation] = useState('');
     const [selectedAbsenceId, setSelectedAbsenceId] = useState<string | null>(null);
-    const [attachedFile, setAttachedFile] = useState<string | null>(null);
+    const [attachedFile, setAttachedFile] = useState<File | null>(null);
 
     // Filter students
     const filteredStudents = MOCK_STUDENTS.filter(s => 
@@ -31,14 +32,26 @@ const AbsenceJustification: React.FC = () => {
     
     const selectedStudentData = MOCK_STUDENTS.find(s => s.id === selectedStudentId);
 
-    const handleJustify = () => {
+    const handleJustify = async () => {
         if (!selectedAbsenceId || !justificationReason) return;
         
         setAbsences(prev => prev.map(a => 
             a.id === selectedAbsenceId 
-            ? { ...a, justified: true, reason: justificationReason, observation: justificationObservation } // In a real app, we'd save the file ref too
+            ? { ...a, justified: true, reason: justificationReason, observation: justificationObservation }
             : a
         ));
+
+        if (attachedFile) {
+            try {
+                const formData = new FormData();
+                formData.append('entity_type', 'justification');
+                formData.append('entity_id', selectedAbsenceId);
+                formData.append('file', attachedFile);
+                await backend.uploadFile(formData);
+            } catch (error) {
+                console.error("Failed to upload justification file", error);
+            }
+        }
 
         // Reset Form
         setJustificationReason('');
@@ -47,9 +60,9 @@ const AbsenceJustification: React.FC = () => {
         setSelectedAbsenceId(null);
     };
 
-    const handleFileUpload = () => {
-        // Simulation
-        setAttachedFile("atestado_medico_scan.pdf");
+    const handleFileUpload = (file: File | null) => {
+        if (!file) return;
+        setAttachedFile(file);
     };
 
     return (
@@ -239,27 +252,31 @@ const AbsenceJustification: React.FC = () => {
 
                                                     <div>
                                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Anexo Comprobatório</label>
-                                                        <div 
-                                                            onClick={handleFileUpload}
-                                                            className={`border-2 border-dashed rounded-lg p-3 flex items-center justify-center gap-2 cursor-pointer transition-colors ${
-                                                                attachedFile 
-                                                                ? 'border-emerald-300 bg-emerald-50 text-emerald-700' 
-                                                                : 'border-slate-300 hover:bg-slate-50 text-slate-500'
-                                                            }`}
-                                                        >
-                                                            {attachedFile ? (
-                                                                <>
-                                                                    <FileText size={18} />
-                                                                    <span className="text-sm font-medium truncate">{attachedFile}</span>
-                                                                    <button onClick={(e) => { e.stopPropagation(); setAttachedFile(null); }} className="p-1 hover:bg-emerald-200 rounded-full"><X size={14} /></button>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <Upload size={18} />
-                                                                    <span className="text-sm">Clique para anexar documento (PDF/IMG)</span>
-                                                                </>
-                                                            )}
-                                                        </div>
+                                <label
+                                    className={`border-2 border-dashed rounded-lg p-3 flex items-center justify-center gap-2 cursor-pointer transition-colors ${
+                                        attachedFile 
+                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-700' 
+                                        : 'border-slate-300 hover:bg-slate-50 text-slate-500'
+                                    }`}
+                                >
+                                    {attachedFile ? (
+                                        <>
+                                            <FileText size={18} />
+                                            <span className="text-sm font-medium truncate">{attachedFile.name}</span>
+                                            <button onClick={(e) => { e.stopPropagation(); setAttachedFile(null); }} className="p-1 hover:bg-emerald-200 rounded-full"><X size={14} /></button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Upload size={18} />
+                                            <span className="text-sm">Clique para anexar documento (PDF/IMG)</span>
+                                        </>
+                                    )}
+                                    <input
+                                        type="file"
+                                        className="hidden"
+                                        onChange={(e) => handleFileUpload(e.target.files?.[0] || null)}
+                                    />
+                                </label>
                                                     </div>
 
                                                     <div>

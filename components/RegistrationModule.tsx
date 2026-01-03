@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { UserPlus, Search, MapPin, Phone, Heart, ShieldAlert, FileText, User, Users, Briefcase, Save, X, Plus, Trash2, School, CheckSquare, Square, ChevronRight, ArrowRight, ArrowLeft } from 'lucide-react';
-import { MOCK_FULL_STUDENT_PROFILES, MOCK_STAFF, MOCK_SCHOOL_CLASSES } from '../constants';
 import { StudentProfile, Staff, EmergencyContact, SchoolClass } from '../types';
+import { backend } from '../services/backendService';
 
 type Tab = 'students' | 'staff' | 'classes';
 
@@ -49,9 +49,9 @@ const SUBJECTS_LIST = ['Matemática', 'Português', 'História', 'Geografia', 'C
 
 const RegistrationModule: React.FC = () => {
     const [activeTab, setActiveTab] = useState<Tab>('students');
-    const [students, setStudents] = useState<StudentProfile[]>(MOCK_FULL_STUDENT_PROFILES);
-    const [staff, setStaff] = useState<Staff[]>(MOCK_STAFF);
-    const [classes, setClasses] = useState<SchoolClass[]>(MOCK_SCHOOL_CLASSES);
+    const [students, setStudents] = useState<StudentProfile[]>([]);
+    const [staff, setStaff] = useState<Staff[]>([]);
+    const [classes, setClasses] = useState<SchoolClass[]>([]);
     
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
     const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
@@ -71,6 +71,89 @@ const RegistrationModule: React.FC = () => {
     // Temporary state for text inputs that will be arrays (allergies/meds)
     const [allergiesInput, setAllergiesInput] = useState('');
     const [medsInput, setMedsInput] = useState('');
+
+    useEffect(() => {
+        const loadData = async () => {
+            try {
+                const [studentsData, staffData, classesData, enrollments] = await Promise.all([
+                    backend.fetchStudents(),
+                    backend.fetchStaff(),
+                    backend.fetchClassrooms(),
+                    backend.fetchEnrollments(),
+                ]);
+
+                const classroomMap = new Map(classesData.map((item: any) => [item.id, item]));
+                const gradeByStudent = new Map<string, string>();
+                enrollments.forEach((enrollment: any) => {
+                    const classroom = classroomMap.get(enrollment.classroom_id);
+                    if (classroom) {
+                        gradeByStudent.set(
+                            String(enrollment.student_id),
+                            classroom.gradeLevel || classroom.grade || classroom.name
+                        );
+                    }
+                });
+
+                const studentsList: StudentProfile[] = studentsData.map((student: any) => ({
+                    id: String(student.id),
+                    name: [student.first_name, student.last_name].filter(Boolean).join(' ') || student.name,
+                    grade: gradeByStudent.get(String(student.id)) || '',
+                    attendance: 100,
+                    tuitionStatus: (student.tuitionStatus || student.tuition_status || 'Pending') as StudentProfile['tuitionStatus'],
+                    dob: student.dob || student.birth_date || '',
+                    cpf: student.cpf || '',
+                    mainAddress: student.mainAddress || student.main_address || '',
+                    reserveAddress: student.reserveAddress || student.reserve_address || '',
+                    healthInfo: student.health_info || student.healthInfo || INITIAL_STUDENT_STATE.healthInfo,
+                    emergencyContacts: (student.emergency_contacts || []).map((contact: any) => ({
+                        name: contact.name,
+                        relation: contact.relation,
+                        phone: contact.phone,
+                        isLegalGuardian: contact.is_legal_guardian ?? contact.isLegalGuardian ?? false,
+                    })),
+                }));
+
+                const staffList: Staff[] = staffData.map((member: any) => ({
+                    id: String(member.id),
+                    name: member.name,
+                    role: member.role,
+                    department: member.department || '',
+                    phone: member.phone || '',
+                    email: member.email || '',
+                    admissionDate: member.admissionDate || member.admission_date || '',
+                }));
+
+                const classStudentIds = await Promise.all(
+                    classesData.map(async (item: any) => {
+                        const ids = await backend.fetchClassroomStudents(String(item.id));
+                        return { id: String(item.id), studentIds: ids.map(String) };
+                    })
+                );
+                const studentIdsByClass = new Map(
+                    classStudentIds.map(({ id, studentIds }) => [id, studentIds])
+                );
+
+                const classesList: SchoolClass[] = classesData.map((cls: any) => ({
+                    id: String(cls.id),
+                    name: cls.name,
+                    gradeLevel: cls.gradeLevel || cls.grade || '',
+                    shift: cls.shift === 'morning' ? 'Morning' : cls.shift === 'afternoon' ? 'Afternoon' : 'Night',
+                    academicYear: cls.academicYear || cls.year,
+                    capacity: cls.capacity || 30,
+                    enrolledStudentIds: studentIdsByClass.get(String(cls.id)) || [],
+                    teacherAllocations: [],
+                }));
+
+                setStudents(studentsList);
+                setStaff(staffList);
+                setClasses(classesList);
+            } catch (error) {
+                console.error("Failed to load registration data", error);
+            }
+        };
+
+        loadData();
+    }, []);
 
     const selectedStudent = students.find(s => s.id === selectedStudentId);
     const selectedStaffMember = staff.find(s => s.id === selectedStaffId);
@@ -100,7 +183,9 @@ const RegistrationModule: React.FC = () => {
         setIsCreatingClass(false);
     };
 
-    const handleSaveStudent = () => {
+    const handleSaveStudent = async () => {
+        const [firstName, ...rest] = formData.name.trim().split(' ');
+        const lastName = rest.join(' ');
         const newStudent: StudentProfile = {
             ...formData,
             id: Math.random().toString(36).substr(2, 9),
@@ -110,20 +195,58 @@ const RegistrationModule: React.FC = () => {
                 medications: medsInput.split(',').map(s => s.trim()).filter(Boolean)
             }
         };
-
-        setStudents([...students, newStudent]);
-        setIsCreatingStudent(false);
-        setSelectedStudentId(newStudent.id);
+        try {
+            const created = await backend.createStudent({
+                first_name: firstName,
+                last_name: lastName,
+                dob: formData.dob,
+                cpf: formData.cpf,
+                mainAddress: formData.mainAddress,
+                reserveAddress: formData.reserveAddress,
+                tuition_status: formData.tuitionStatus,
+                healthInfo: newStudent.healthInfo,
+                emergency_contacts: formData.emergencyContacts,
+            });
+            const createdStudent: StudentProfile = {
+                ...newStudent,
+                id: String(created.id),
+            };
+            setStudents([...students, createdStudent]);
+            setIsCreatingStudent(false);
+            setSelectedStudentId(createdStudent.id);
+        } catch (error) {
+            console.error("Failed to save student", error);
+        }
     };
 
-    const handleSaveClass = () => {
+    const handleSaveClass = async () => {
         const newClass: SchoolClass = {
              ...classFormData,
              id: Math.random().toString(36).substr(2, 9),
         };
-        setClasses([...classes, newClass]);
-        setIsCreatingClass(false);
-        setSelectedClassId(newClass.id);
+        try {
+            const shiftMap: Record<SchoolClass['shift'], string> = {
+                Morning: 'morning',
+                Afternoon: 'afternoon',
+                Night: 'evening'
+            };
+            const created = await backend.createClassroom({
+                name: newClass.name,
+                gradeLevel: newClass.gradeLevel,
+                academicYear: newClass.academicYear,
+                shift: shiftMap[newClass.shift],
+                capacity: newClass.capacity,
+            });
+            const createdClass: SchoolClass = {
+                ...newClass,
+                id: String(created.id),
+            };
+            setClasses([...classes, createdClass]);
+            setIsCreatingClass(false);
+            setSelectedClassId(createdClass.id);
+        } catch (error) {
+            console.error("Failed to save class", error);
+        }
     };
 
     const updateHealthInfo = (field: string, value: string) => {
