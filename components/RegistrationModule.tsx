@@ -249,6 +249,14 @@ const RegistrationModule: React.FC = () => {
         setIsCreatingClass(true);
     };
 
+    const handleEditStaff = () => {
+        if (!selectedStaffMember) return;
+        setStaffFormData({
+            ...selectedStaffMember,
+        });
+        setIsCreatingStaff(true);
+    };
+
     const handleSaveStudent = async () => {
         const [firstName, ...rest] = formData.name.trim().split(' ');
         const lastName = rest.join(' ');
@@ -382,24 +390,39 @@ const RegistrationModule: React.FC = () => {
         }
         const newStaff: Staff = {
             ...staffFormData,
-            id: Math.random().toString(36).substr(2, 9),
+            id: selectedStaffId || Math.random().toString(36).substr(2, 9),
         };
         try {
-            const created = await backend.createStaff({
+            const payload = {
                 name: newStaff.name,
                 role: newStaff.role,
                 department: newStaff.department,
                 phone: newStaff.phone,
                 email: newStaff.email,
                 admission_date: newStaff.admissionDate,
-            });
-            const createdStaff: Staff = {
-                ...newStaff,
-                id: String(created.id),
             };
-            setStaff([...staff, createdStaff]);
-            setIsCreatingStaff(false);
-            setSelectedStaffId(createdStaff.id);
+
+            if (selectedStaffId) {
+                // Update
+                await backend.updateStaff(selectedStaffId, payload);
+                const updatedStaff: Staff = {
+                    ...newStaff,
+                    id: selectedStaffId
+                };
+                setStaff(prev => prev.map(s => s.id === selectedStaffId ? updatedStaff : s));
+                setIsCreatingStaff(false);
+                // Keep selection
+            } else {
+                // Create
+                const created = await backend.createStaff(payload);
+                const createdStaff: Staff = {
+                    ...newStaff,
+                    id: String(created.id),
+                };
+                setStaff([...staff, createdStaff]);
+                setIsCreatingStaff(false);
+                setSelectedStaffId(createdStaff.id);
+            }
         } catch (error) {
             console.error("Failed to save staff", error);
         }
@@ -995,7 +1018,7 @@ const RegistrationModule: React.FC = () => {
                             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                                 <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                                     <Briefcase size={24} className="text-indigo-600" />
-                                    Novo Funcionário
+                                    {selectedStaffId ? 'Editar Funcionário' : 'Novo Funcionário'}
                                 </h3>
                                 <div className="flex gap-2">
                                     <button
@@ -1008,7 +1031,7 @@ const RegistrationModule: React.FC = () => {
                                         onClick={handleSaveStaff}
                                         className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2"
                                     >
-                                        <Save size={16} /> Salvar
+                                        <Save size={16} /> {selectedStaffId ? 'Salvar Alterações' : 'Salvar'}
                                     </button>
                                 </div>
                             </div>
@@ -1075,13 +1098,22 @@ const RegistrationModule: React.FC = () => {
                                         <p className="text-slate-500">{selectedStaffMember.role}</p>
                                     </div>
                                 </div>
-                                <button
-                                    onClick={() => handleDeleteStaff(selectedStaffMember.id)}
-                                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                                    title="Excluir Funcionário"
-                                >
-                                    <Trash2 size={20} />
-                                </button>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleEditStaff}
+                                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                        title="Editar Funcionário"
+                                    >
+                                        <Pencil size={20} />
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeleteStaff(selectedStaffMember.id)}
+                                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                        title="Excluir Funcionário"
+                                    >
+                                        <Trash2 size={20} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     ) : (
