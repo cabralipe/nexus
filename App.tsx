@@ -52,63 +52,63 @@ const App: React.FC = () => {
   const renderContent = () => {
     // Specialized Views based on Nav Item
     if (currentView === ViewState.FINANCIAL) {
-        return <FinancialModule />;
+      return <FinancialModule />;
     }
     if (currentView === ViewState.ACADEMIC) {
-        return <AcademicModule />;
+      return <AcademicModule />;
     }
     if (currentView === ViewState.COMMUNICATION) {
-        return <CommunicationModule />;
+      return <CommunicationModule />;
     }
     if (currentView === ViewState.SETTINGS) {
-        return <SettingsModule />;
+      return <SettingsModule />;
     }
     if (currentView === ViewState.TEACHER_MONITORING) {
-        return <TeacherMonitoring />;
+      return <TeacherMonitoring />;
     }
     if (currentView === ViewState.ABSENCE_JUSTIFICATION) {
-        return <AbsenceJustification />;
+      return <AbsenceJustification />;
     }
     if (currentView === ViewState.PEDAGOGICAL) {
-        return <PedagogicalCoordination />;
+      return <PedagogicalCoordination />;
     }
     if (currentView === ViewState.INVENTORY) {
-        return <InventoryModule />;
+      return <InventoryModule />;
     }
     if (currentView === ViewState.REGISTRATION) {
-        return <RegistrationModule />;
+      return <RegistrationModule />;
     }
     if (currentView === ViewState.CLASS_ALLOCATION) {
-        return <ClassAllocationModule />;
+      return <ClassAllocationModule />;
     }
     if (currentView === ViewState.SCHEDULE) {
-        return <ScheduleModule />;
+      return <ScheduleModule />;
     }
 
     // Default Dashboard Views based on Role
     if (currentView === ViewState.DASHBOARD) {
-        switch (userRole) {
-            case UserRole.ADMIN:
-                return <AdminDashboard />;
-            case UserRole.TEACHER:
-                return <TeacherDashboard authRole={authRole} />;
-            case UserRole.STUDENT:
-                return <StudentDashboard />;
-            default:
-                return <div>Unknown Role</div>;
-        }
+      switch (userRole) {
+        case UserRole.ADMIN:
+          return <AdminDashboard />;
+        case UserRole.TEACHER:
+          return <TeacherDashboard authRole={authRole} />;
+        case UserRole.STUDENT:
+          return <StudentDashboard />;
+        default:
+          return <div>Unknown Role</div>;
+      }
     }
-    
+
     return (
-        <div className="flex flex-col items-center justify-center h-[70vh] text-center p-8 bg-white rounded-xl border border-slate-200 border-dashed">
-             <div className="bg-slate-50 p-6 rounded-full mb-4">
-                 <UserCircle size={48} className="text-slate-400" />
-             </div>
-             <h3 className="text-lg font-bold text-slate-700">Módulo em Desenvolvimento</h3>
-             <p className="text-slate-500 max-w-md mt-2">
-                A tela <strong>{currentView}</strong> para o perfil <strong>{userRole}</strong> está sendo construída.
-             </p>
+      <div className="flex flex-col items-center justify-center h-[70vh] text-center p-8 bg-white rounded-xl border border-slate-200 border-dashed">
+        <div className="bg-slate-50 p-6 rounded-full mb-4">
+          <UserCircle size={48} className="text-slate-400" />
         </div>
+        <h3 className="text-lg font-bold text-slate-700">Módulo em Desenvolvimento</h3>
+        <p className="text-slate-500 max-w-md mt-2">
+          A tela <strong>{currentView}</strong> para o perfil <strong>{userRole}</strong> está sendo construída.
+        </p>
+      </div>
     );
   };
 
@@ -202,58 +202,58 @@ const App: React.FC = () => {
 
       <div className="md:ml-64 flex-1 flex flex-col">
         {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 sticky top-0 z-10">
-            <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsSidebarOpen(true)}
-                  className="md:hidden p-2 rounded-lg hover:bg-slate-100"
-                  aria-label="Abrir menu"
-                >
-                  <Menu size={20} className="text-slate-600" />
-                </button>
-                <div className="flex items-center bg-slate-100 rounded-lg px-3 py-2 w-72 sm:w-96">
-                <Search size={18} className="text-slate-400 mr-2" />
-                <input 
-                    type="text" 
-                    placeholder="Buscar alunos, turmas ou pagamentos..." 
-                    className="bg-transparent border-none outline-none text-sm w-full text-slate-700 placeholder-slate-400"
-                />
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-8 sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden p-2 rounded-lg hover:bg-slate-100"
+              aria-label="Abrir menu"
+            >
+              <Menu size={20} className="text-slate-600" />
+            </button>
+            <div className="flex items-center bg-slate-100 rounded-lg px-3 py-2 w-72 sm:w-96">
+              <Search size={18} className="text-slate-400 mr-2" />
+              <input
+                type="text"
+                placeholder="Buscar alunos, turmas ou pagamentos..."
+                className="bg-transparent border-none outline-none text-sm w-full text-slate-700 placeholder-slate-400"
+              />
             </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-                {/* Role Switcher for Demo */}
-                <select 
-                    value={userRole} 
-                    onChange={(e) => switchRole(e.target.value as UserRole)}
-                    className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded border border-slate-700 focus:outline-none"
-                >
-                    <option value={UserRole.ADMIN}>Ver como Admin</option>
-                    <option value={UserRole.TEACHER}>Ver como Professor</option>
-                    <option value={UserRole.STUDENT}>Ver como Aluno</option>
-                </select>
+          </div>
 
-                <button className="relative p-2 hover:bg-slate-100 rounded-full transition-colors">
-                    <Bell size={20} className="text-slate-600" />
-                    <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full"></span>
-                </button>
-                
-                <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
-                    <div className="text-right hidden md:block">
-                        <p className="text-sm font-bold text-slate-800">Roberto Santos</p>
-                        <p className="text-xs text-slate-500 capitalize">{userRole.toLowerCase()}</p>
-                    </div>
-                    <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm">
-                        RS
-                    </div>
-                </div>
+          <div className="flex items-center gap-4">
+            {/* Role Switcher for Demo */}
+            <select
+              value={userRole}
+              onChange={(e) => switchRole(e.target.value as UserRole)}
+              className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded border border-slate-700 focus:outline-none"
+            >
+              <option value={UserRole.ADMIN}>Ver como Admin</option>
+              <option value={UserRole.TEACHER}>Ver como Professor</option>
+              <option value={UserRole.STUDENT}>Ver como Aluno</option>
+            </select>
+
+            <button className="relative p-2 hover:bg-slate-100 rounded-full transition-colors">
+              <Bell size={20} className="text-slate-600" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full"></span>
+            </button>
+
+            <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
+              <div className="text-right hidden md:block">
+                <p className="text-sm font-bold text-slate-800">Roberto Santos</p>
+                <p className="text-xs text-slate-500 capitalize">{userRole.toLowerCase()}</p>
+              </div>
+              <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm">
+                RS
+              </div>
             </div>
+          </div>
         </header>
 
         {/* Main Content Scrollable Area */}
-        <main className="flex-1 p-8 overflow-y-auto">
-            {renderContent()}
+        <main className="flex-1 p-4 md:p-8 overflow-y-auto">
+          {renderContent()}
         </main>
       </div>
     </div>
