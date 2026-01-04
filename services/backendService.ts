@@ -66,6 +66,9 @@ export const backend = {
     });
     return data.data;
   },
+  async deleteStudent(id: string) {
+    return requestJson<{ success: boolean }>(`/students/${id}/`, { method: "DELETE" });
+  },
   async fetchStaff() {
     const data = await requestJson<{ data: any[] }>("/staff/?page_size=200");
     return withPagination(data);
@@ -73,6 +76,16 @@ export const backend = {
   async createStaff(payload: Record<string, unknown>) {
     const data = await requestJson<{ data: any }>("/staff/", { method: "POST", body: payload });
     return data.data;
+  },
+  async updateStaff(id: string, payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>(`/staff/${id}/`, {
+      method: "PATCH",
+      body: payload,
+    });
+    return data.data;
+  },
+  async deleteStaff(id: string) {
+    return requestJson<{ success: boolean }>(`/staff/${id}/`, { method: "DELETE" });
   },
   async fetchClassrooms() {
     const data = await requestJson<{ data: any[] }>("/classrooms/?page_size=200");
@@ -88,6 +101,9 @@ export const backend = {
       body: payload,
     });
     return data.data;
+  },
+  async deleteClassroom(id: string) {
+    return requestJson<{ success: boolean }>(`/classrooms/${id}/`, { method: "DELETE" });
   },
   async fetchClassroomStudents(classroomId: string) {
     const data = await requestJson<{ data: string[] }>(`/classrooms/${classroomId}/students/`);

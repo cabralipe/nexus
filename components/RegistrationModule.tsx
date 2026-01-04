@@ -45,6 +45,16 @@ const EDUCATION_LEVELS: Record<string, string[]> = {
     'Ensino Médio': ['1ª Série', '2ª Série', '3ª Série']
 };
 
+const INITIAL_STAFF_STATE: Staff = {
+    id: '',
+    name: '',
+    role: 'Teacher',
+    department: '',
+    phone: '',
+    email: '',
+    admissionDate: new Date().toISOString().split('T')[0],
+};
+
 const SUBJECTS_LIST = ['Matemática', 'Português', 'História', 'Geografia', 'Ciências', 'Inglês', 'Educação Física', 'Artes', 'Recreação', 'Desenvolvimento Cognitivo'];
 
 const RegistrationModule: React.FC = () => {
@@ -52,7 +62,7 @@ const RegistrationModule: React.FC = () => {
     const [students, setStudents] = useState<StudentProfile[]>([]);
     const [staff, setStaff] = useState<Staff[]>([]);
     const [classes, setClasses] = useState<SchoolClass[]>([]);
-    
+
     const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
     const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
     const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
@@ -61,18 +71,20 @@ const RegistrationModule: React.FC = () => {
     // Creation Mode State
     const [isCreatingStudent, setIsCreatingStudent] = useState(false);
     const [isCreatingClass, setIsCreatingClass] = useState(false);
+    const [isCreatingStaff, setIsCreatingStaff] = useState(false);
     const [createdCredentials, setCreatedCredentials] = useState<{ username: string; password: string } | null>(null);
-    
+
     // Class Creation Specifics
     const [selectedEducationLevel, setSelectedEducationLevel] = useState('');
-    
+
     const [formData, setFormData] = useState<StudentProfile>(INITIAL_STUDENT_STATE);
     const [classFormData, setClassFormData] = useState<SchoolClass>(INITIAL_CLASS_STATE);
+    const [staffFormData, setStaffFormData] = useState<Staff>(INITIAL_STAFF_STATE);
     const [studentStatus, setStudentStatus] = useState<'active' | 'inactive' | 'graduated'>('active');
     const [enrollmentCode, setEnrollmentCode] = useState('');
     const [studentEmail, setStudentEmail] = useState('');
     const [studentPassword, setStudentPassword] = useState('');
-    
+
     // Temporary state for text inputs that will be arrays (allergies/meds)
     const [allergiesInput, setAllergiesInput] = useState('');
     const [medsInput, setMedsInput] = useState('');
@@ -184,12 +196,17 @@ const RegistrationModule: React.FC = () => {
             setSelectedClassId(null);
             setClassFormData(INITIAL_CLASS_STATE);
             setSelectedEducationLevel('');
+        } else if (activeTab === 'staff') {
+            setIsCreatingStaff(true);
+            setSelectedStaffId(null);
+            setStaffFormData(INITIAL_STAFF_STATE);
         }
     };
 
     const handleCancelCreation = () => {
         setIsCreatingStudent(false);
         setIsCreatingClass(false);
+        setIsCreatingStaff(false);
     };
 
     const handleSaveStudent = async () => {
@@ -251,8 +268,8 @@ const RegistrationModule: React.FC = () => {
 
     const handleSaveClass = async () => {
         const newClass: SchoolClass = {
-             ...classFormData,
-             id: Math.random().toString(36).substr(2, 9),
+            ...classFormData,
+            id: Math.random().toString(36).substr(2, 9),
         };
         try {
             const shiftMap: Record<SchoolClass['shift'], string> = {
@@ -276,6 +293,69 @@ const RegistrationModule: React.FC = () => {
             setSelectedClassId(createdClass.id);
         } catch (error) {
             console.error("Failed to save class", error);
+        }
+    };
+
+    const handleSaveStaff = async () => {
+        if (!staffFormData.name || !staffFormData.role) {
+            alert('Nome e Cargo são obrigatórios');
+            return;
+        }
+        const newStaff: Staff = {
+            ...staffFormData,
+            id: Math.random().toString(36).substr(2, 9),
+        };
+        try {
+            const created = await backend.createStaff({
+                name: newStaff.name,
+                role: newStaff.role,
+                department: newStaff.department,
+                phone: newStaff.phone,
+                email: newStaff.email,
+                admission_date: newStaff.admissionDate,
+            });
+            const createdStaff: Staff = {
+                ...newStaff,
+                id: String(created.id),
+            };
+            setStaff([...staff, createdStaff]);
+            setIsCreatingStaff(false);
+            setSelectedStaffId(createdStaff.id);
+        } catch (error) {
+            console.error("Failed to save staff", error);
+        }
+    };
+
+    const handleDeleteStudent = async (id: string) => {
+        if (!confirm('Tem certeza que deseja remover este aluno?')) return;
+        try {
+            await backend.deleteStudent(id);
+            setStudents(students.filter(s => s.id !== id));
+            if (selectedStudentId === id) setSelectedStudentId(null);
+        } catch (error) {
+            console.error("Failed to delete student", error);
+        }
+    };
+
+    const handleDeleteStaff = async (id: string) => {
+        if (!confirm('Tem certeza que deseja remover este funcionário?')) return;
+        try {
+            await backend.deleteStaff(id);
+            setStaff(staff.filter(s => s.id !== id));
+            if (selectedStaffId === id) setSelectedStaffId(null);
+        } catch (error) {
+            console.error("Failed to delete staff", error);
+        }
+    };
+
+    const handleDeleteClass = async (id: string) => {
+        if (!confirm('Tem certeza que deseja remover esta turma?')) return;
+        try {
+            await backend.deleteClassroom(id);
+            setClasses(classes.filter(c => c.id !== id));
+            if (selectedClassId === id) setSelectedClassId(null);
+        } catch (error) {
+            console.error("Failed to delete class", error);
         }
     };
 
@@ -311,6 +391,7 @@ const RegistrationModule: React.FC = () => {
         setSearchTerm('');
         setIsCreatingStudent(false);
         setIsCreatingClass(false);
+        setIsCreatingStaff(false);
     };
 
     return (
@@ -321,19 +402,19 @@ const RegistrationModule: React.FC = () => {
                     <p className="text-slate-500">Gestão de dados de alunos, turmas e colaboradores.</p>
                 </div>
                 <div className="flex bg-white rounded-lg p-1 border border-slate-200 shadow-sm">
-                    <button 
+                    <button
                         onClick={() => { setActiveTab('students'); resetSelection(); }}
                         className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'students' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
                         Alunos
                     </button>
-                    <button 
+                    <button
                         onClick={() => { setActiveTab('classes'); resetSelection(); }}
-                         className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'classes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'classes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
                         Turmas
                     </button>
-                    <button 
+                    <button
                         onClick={() => { setActiveTab('staff'); resetSelection(); }}
                         className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'staff' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
@@ -348,23 +429,23 @@ const RegistrationModule: React.FC = () => {
                     <div className="p-4 border-b border-slate-100">
                         <div className="relative">
                             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 placeholder={activeTab === 'students' ? "Buscar aluno..." : activeTab === 'classes' ? "Buscar turma..." : "Buscar funcionário..."}
                                 className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
                         </div>
-                        <button 
+                        <button
                             onClick={handleStartCreation}
                             className="w-full mt-3 flex items-center justify-center gap-2 bg-slate-800 text-white py-2 rounded-lg text-sm hover:bg-slate-900 transition-colors"
                         >
-                            <Plus size={16} /> 
+                            <Plus size={16} />
                             {activeTab === 'students' ? 'Novo Aluno' : activeTab === 'classes' ? 'Nova Turma' : 'Novo Funcionário'}
                         </button>
                     </div>
-                    
+
                     <div className="overflow-y-auto flex-1 p-2 space-y-1">
                         {activeTab === 'students' && filteredStudents.map(student => (
                             <button
@@ -373,7 +454,7 @@ const RegistrationModule: React.FC = () => {
                                 className={`w-full text-left p-3 rounded-lg transition-colors flex items-center gap-3 ${selectedStudentId === student.id && !isCreatingStudent ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-slate-50 border border-transparent'}`}
                             >
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${selectedStudentId === student.id && !isCreatingStudent ? 'bg-indigo-200 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
-                                    {student.name.substring(0,2).toUpperCase()}
+                                    {student.name.substring(0, 2).toUpperCase()}
                                 </div>
                                 <div>
                                     <div className={`font-semibold text-sm ${selectedStudentId === student.id && !isCreatingStudent ? 'text-indigo-900' : 'text-slate-800'}`}>{student.name}</div>
@@ -388,7 +469,7 @@ const RegistrationModule: React.FC = () => {
                                 className={`w-full text-left p-3 rounded-lg transition-colors flex items-center gap-3 ${selectedStaffId === s.id ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-slate-50 border border-transparent'}`}
                             >
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${selectedStaffId === s.id ? 'bg-indigo-200 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
-                                    {s.name.substring(0,2).toUpperCase()}
+                                    {s.name.substring(0, 2).toUpperCase()}
                                 </div>
                                 <div>
                                     <div className={`font-semibold text-sm ${selectedStaffId === s.id ? 'text-indigo-900' : 'text-slate-800'}`}>{s.name}</div>
@@ -412,8 +493,8 @@ const RegistrationModule: React.FC = () => {
                                 <div className="ml-auto flex flex-col items-end">
                                     <span className="text-xs font-bold text-slate-600">{c.enrolledStudentIds.length}/{c.capacity}</span>
                                     <div className="w-12 h-1.5 bg-slate-200 rounded-full mt-1 overflow-hidden">
-                                        <div 
-                                            className={`h-full rounded-full ${c.enrolledStudentIds.length >= c.capacity ? 'bg-rose-500' : 'bg-emerald-500'}`} 
+                                        <div
+                                            className={`h-full rounded-full ${c.enrolledStudentIds.length >= c.capacity ? 'bg-rose-500' : 'bg-emerald-500'}`}
                                             style={{ width: `${(c.enrolledStudentIds.length / c.capacity) * 100}%` }}
                                         ></div>
                                     </div>
@@ -434,13 +515,13 @@ const RegistrationModule: React.FC = () => {
                                         Nova Turma
                                     </h3>
                                     <div className="flex gap-2">
-                                        <button 
+                                        <button
                                             onClick={handleCancelCreation}
                                             className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
                                         >
                                             Cancelar
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={handleSaveClass}
                                             disabled={!classFormData.name || !classFormData.gradeLevel}
                                             className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50"
@@ -452,16 +533,16 @@ const RegistrationModule: React.FC = () => {
                                 <div className="grid grid-cols-2 gap-6">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Nome da Turma (Identificador)</label>
-                                        <input 
+                                        <input
                                             type="text" placeholder="Ex: Berçário A, 9º Ano B" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                            value={classFormData.name} onChange={e => setClassFormData({...classFormData, name: e.target.value})}
+                                            value={classFormData.name} onChange={e => setClassFormData({ ...classFormData, name: e.target.value })}
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Turno</label>
-                                        <select 
+                                        <select
                                             className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
-                                            value={classFormData.shift} onChange={e => setClassFormData({...classFormData, shift: e.target.value as any})}
+                                            value={classFormData.shift} onChange={e => setClassFormData({ ...classFormData, shift: e.target.value as any })}
                                         >
                                             <option value="Morning">Matutino</option>
                                             <option value="Afternoon">Vespertino</option>
@@ -469,18 +550,18 @@ const RegistrationModule: React.FC = () => {
                                             <option value="FullDay">Integral</option>
                                         </select>
                                     </div>
-                                    
+
                                     <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
                                         <label className="block text-sm font-bold text-slate-700 mb-3">Nível e Série</label>
                                         <div className="grid grid-cols-2 gap-6">
                                             <div>
                                                 <label className="block text-xs font-semibold text-slate-500 mb-1">Etapa de Ensino</label>
-                                                <select 
+                                                <select
                                                     className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
-                                                    value={selectedEducationLevel} 
+                                                    value={selectedEducationLevel}
                                                     onChange={e => {
                                                         setSelectedEducationLevel(e.target.value);
-                                                        setClassFormData({...classFormData, gradeLevel: ''}); // Reset grade when level changes
+                                                        setClassFormData({ ...classFormData, gradeLevel: '' }); // Reset grade when level changes
                                                     }}
                                                 >
                                                     <option value="">Selecione a etapa...</option>
@@ -491,10 +572,10 @@ const RegistrationModule: React.FC = () => {
                                             </div>
                                             <div>
                                                 <label className="block text-xs font-semibold text-slate-500 mb-1">Série / Ano</label>
-                                                <select 
+                                                <select
                                                     className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
-                                                    value={classFormData.gradeLevel} 
-                                                    onChange={e => setClassFormData({...classFormData, gradeLevel: e.target.value})}
+                                                    value={classFormData.gradeLevel}
+                                                    onChange={e => setClassFormData({ ...classFormData, gradeLevel: e.target.value })}
                                                     disabled={!selectedEducationLevel}
                                                 >
                                                     <option value="">
@@ -510,16 +591,16 @@ const RegistrationModule: React.FC = () => {
 
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Capacidade de Alunos</label>
-                                        <input 
+                                        <input
                                             type="number" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                            value={classFormData.capacity} onChange={e => setClassFormData({...classFormData, capacity: parseInt(e.target.value)})}
+                                            value={classFormData.capacity} onChange={e => setClassFormData({ ...classFormData, capacity: parseInt(e.target.value) })}
                                         />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Ano Letivo</label>
-                                        <input 
+                                        <input
                                             type="number" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                            value={classFormData.academicYear} onChange={e => setClassFormData({...classFormData, academicYear: parseInt(e.target.value)})}
+                                            value={classFormData.academicYear} onChange={e => setClassFormData({ ...classFormData, academicYear: parseInt(e.target.value) })}
                                         />
                                     </div>
                                 </div>
@@ -538,12 +619,21 @@ const RegistrationModule: React.FC = () => {
                                             <span>{selectedClass.shift === 'Morning' ? 'Matutino' : selectedClass.shift === 'Afternoon' ? 'Vespertino' : 'Noturno'}</span>
                                         </div>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-sm text-slate-500 mb-1">Ocupação</p>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-2xl font-bold text-slate-800">{selectedClass.enrolledStudentIds.length}</span>
-                                            <span className="text-sm text-slate-400">/ {selectedClass.capacity}</span>
+                                    <div className="flex items-center gap-6">
+                                        <div className="text-right">
+                                            <p className="text-sm text-slate-500 mb-1">Ocupação</p>
+                                            <div className="flex items-center gap-2 justify-end">
+                                                <span className="text-2xl font-bold text-slate-800">{selectedClass.enrolledStudentIds.length}</span>
+                                                <span className="text-sm text-slate-400">/ {selectedClass.capacity}</span>
+                                            </div>
                                         </div>
+                                        <button
+                                            onClick={() => handleDeleteClass(selectedClass.id)}
+                                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                            title="Excluir Turma"
+                                        >
+                                            <Trash2 size={20} />
+                                        </button>
                                     </div>
                                 </div>
 
@@ -572,13 +662,13 @@ const RegistrationModule: React.FC = () => {
                                     Novo Cadastro de Aluno
                                 </h3>
                                 <div className="flex gap-2">
-                                    <button 
+                                    <button
                                         onClick={handleCancelCreation}
                                         className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
                                     >
                                         Cancelar
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={handleSaveStudent}
                                         className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2"
                                     >
@@ -594,198 +684,198 @@ const RegistrationModule: React.FC = () => {
                                 </div>
                             )}
                             {/* Shortened for brevity since we are just removing the enrollment tab logic */}
-                             {/* ... Form fields are same as before ... */}
-                                 {/* Section 1: Personal Info */}
-                                <div>
-                                    <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Informações Pessoais</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="md:col-span-2">
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Nome Completo</label>
-                                            <input 
-                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Código de Matrícula</label>
-                                            <input
-                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={enrollmentCode} onChange={e => setEnrollmentCode(e.target.value)}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Status do Aluno</label>
-                                            <select
-                                                className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
-                                                value={studentStatus}
-                                                onChange={e => setStudentStatus(e.target.value as 'active' | 'inactive' | 'graduated')}
-                                            >
-                                                <option value="active">Ativo</option>
-                                                <option value="inactive">Inativo</option>
-                                                <option value="graduated">Concluído</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Data de Nascimento</label>
-                                            <input 
-                                                type="date" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={formData.dob} onChange={e => setFormData({...formData, dob: e.target.value})}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">CPF</label>
-                                            <input 
-                                                type="text" placeholder="000.000.000-00" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={formData.cpf} onChange={e => setFormData({...formData, cpf: e.target.value})}
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Status de Mensalidade</label>
-                                            <select
-                                                className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
-                                                value={formData.tuitionStatus}
-                                                onChange={e => setFormData({...formData, tuitionStatus: e.target.value as StudentProfile['tuitionStatus']})}
-                                            >
-                                                <option value="Paid">Em dia</option>
-                                                <option value="Pending">Pendente</option>
-                                                <option value="Late">Atrasada</option>
-                                            </select>
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Email do Aluno (para login)</label>
-                                            <input
-                                                type="email" placeholder="aluno@escola.com" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={studentEmail} onChange={e => setStudentEmail(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Senha Inicial</label>
-                                            <input
-                                                type="password" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={studentPassword} onChange={e => setStudentPassword(e.target.value)}
-                                            />
-                                        </div>
+                            {/* ... Form fields are same as before ... */}
+                            {/* Section 1: Personal Info */}
+                            <div>
+                                <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Informações Pessoais</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Nome Completo</label>
+                                        <input
+                                            type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })}
+                                        />
                                     </div>
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Endereços</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div className="md:col-span-2">
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Endereço Principal</label>
-                                            <input
-                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={formData.mainAddress} onChange={e => setFormData({...formData, mainAddress: e.target.value})}
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Endereço de Reserva</label>
-                                            <input
-                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={formData.reserveAddress} onChange={e => setFormData({...formData, reserveAddress: e.target.value})}
-                                            />
-                                        </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Código de Matrícula</label>
+                                        <input
+                                            type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={enrollmentCode} onChange={e => setEnrollmentCode(e.target.value)}
+                                        />
                                     </div>
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Saúde</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Tipo Sanguíneo</label>
-                                            <input
-                                                type="text" placeholder="Ex: A+" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={formData.healthInfo.bloodType} onChange={e => updateHealthInfo('bloodType', e.target.value)}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Condições</label>
-                                            <input
-                                                type="text" placeholder="Ex: Asma" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={formData.healthInfo.conditions} onChange={e => updateHealthInfo('conditions', e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Alergias (separe por vírgula)</label>
-                                            <input
-                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={allergiesInput} onChange={e => setAllergiesInput(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="md:col-span-2">
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Medicamentos (separe por vírgula)</label>
-                                            <input
-                                                type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                value={medsInput} onChange={e => setMedsInput(e.target.value)}
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-4">
-                                        <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Contatos de Emergência</h4>
-                                        <button
-                                            type="button"
-                                            onClick={addEmergencyContact}
-                                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Status do Aluno</label>
+                                        <select
+                                            className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                            value={studentStatus}
+                                            onChange={e => setStudentStatus(e.target.value as 'active' | 'inactive' | 'graduated')}
                                         >
-                                            + Adicionar contato
-                                        </button>
+                                            <option value="active">Ativo</option>
+                                            <option value="inactive">Inativo</option>
+                                            <option value="graduated">Concluído</option>
+                                        </select>
                                     </div>
-                                    <div className="space-y-4">
-                                        {formData.emergencyContacts.map((contact, index) => (
-                                            <div key={`contact-${index}`} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-slate-200 rounded-lg">
-                                                <div className="md:col-span-2 flex items-center justify-between">
-                                                    <h5 className="text-sm font-semibold text-slate-700">Contato {index + 1}</h5>
-                                                    {formData.emergencyContacts.length > 1 && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeEmergencyContact(index)}
-                                                            className="text-xs text-rose-600 hover:text-rose-700"
-                                                        >
-                                                            Remover
-                                                        </button>
-                                                    )}
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-slate-700 mb-1">Nome</label>
-                                                    <input
-                                                        type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                        value={contact.name} onChange={e => updateEmergencyContact(index, 'name', e.target.value)}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-slate-700 mb-1">Parentesco</label>
-                                                    <input
-                                                        type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                        value={contact.relation} onChange={e => updateEmergencyContact(index, 'relation', e.target.value)}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-slate-700 mb-1">Telefone</label>
-                                                    <input
-                                                        type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                        value={contact.phone} onChange={e => updateEmergencyContact(index, 'phone', e.target.value)}
-                                                    />
-                                                </div>
-                                                <div className="flex items-center gap-2 mt-6">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={contact.isLegalGuardian}
-                                                        onChange={e => updateEmergencyContact(index, 'isLegalGuardian', e.target.checked)}
-                                                        className="h-4 w-4 text-indigo-600 border-slate-300 rounded"
-                                                    />
-                                                    <span className="text-sm text-slate-700">Responsável legal</span>
-                                                </div>
-                                            </div>
-                                        ))}
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Data de Nascimento</label>
+                                        <input
+                                            type="date" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={formData.dob} onChange={e => setFormData({ ...formData, dob: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">CPF</label>
+                                        <input
+                                            type="text" placeholder="000.000.000-00" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={formData.cpf} onChange={e => setFormData({ ...formData, cpf: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Status de Mensalidade</label>
+                                        <select
+                                            className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                            value={formData.tuitionStatus}
+                                            onChange={e => setFormData({ ...formData, tuitionStatus: e.target.value as StudentProfile['tuitionStatus'] })}
+                                        >
+                                            <option value="Paid">Em dia</option>
+                                            <option value="Pending">Pendente</option>
+                                            <option value="Late">Atrasada</option>
+                                        </select>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Email do Aluno (para login)</label>
+                                        <input
+                                            type="email" placeholder="aluno@escola.com" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={studentEmail} onChange={e => setStudentEmail(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Senha Inicial</label>
+                                        <input
+                                            type="password" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={studentPassword} onChange={e => setStudentPassword(e.target.value)}
+                                        />
                                     </div>
                                 </div>
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Endereços</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Endereço Principal</label>
+                                        <input
+                                            type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={formData.mainAddress} onChange={e => setFormData({ ...formData, mainAddress: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Endereço de Reserva</label>
+                                        <input
+                                            type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={formData.reserveAddress} onChange={e => setFormData({ ...formData, reserveAddress: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 border-b border-slate-100 pb-2">Saúde</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Tipo Sanguíneo</label>
+                                        <input
+                                            type="text" placeholder="Ex: A+" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={formData.healthInfo.bloodType} onChange={e => updateHealthInfo('bloodType', e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Condições</label>
+                                        <input
+                                            type="text" placeholder="Ex: Asma" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={formData.healthInfo.conditions} onChange={e => updateHealthInfo('conditions', e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Alergias (separe por vírgula)</label>
+                                        <input
+                                            type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={allergiesInput} onChange={e => setAllergiesInput(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Medicamentos (separe por vírgula)</label>
+                                        <input
+                                            type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                            value={medsInput} onChange={e => setMedsInput(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-4">
+                                    <h4 className="text-sm font-bold text-slate-500 uppercase tracking-wider">Contatos de Emergência</h4>
+                                    <button
+                                        type="button"
+                                        onClick={addEmergencyContact}
+                                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700"
+                                    >
+                                        + Adicionar contato
+                                    </button>
+                                </div>
+                                <div className="space-y-4">
+                                    {formData.emergencyContacts.map((contact, index) => (
+                                        <div key={`contact-${index}`} className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border border-slate-200 rounded-lg">
+                                            <div className="md:col-span-2 flex items-center justify-between">
+                                                <h5 className="text-sm font-semibold text-slate-700">Contato {index + 1}</h5>
+                                                {formData.emergencyContacts.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeEmergencyContact(index)}
+                                                        className="text-xs text-rose-600 hover:text-rose-700"
+                                                    >
+                                                        Remover
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">Nome</label>
+                                                <input
+                                                    type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                    value={contact.name} onChange={e => updateEmergencyContact(index, 'name', e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">Parentesco</label>
+                                                <input
+                                                    type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                    value={contact.relation} onChange={e => updateEmergencyContact(index, 'relation', e.target.value)}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-slate-700 mb-1">Telefone</label>
+                                                <input
+                                                    type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                    value={contact.phone} onChange={e => updateEmergencyContact(index, 'phone', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="flex items-center gap-2 mt-6">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={contact.isLegalGuardian}
+                                                    onChange={e => updateEmergencyContact(index, 'isLegalGuardian', e.target.checked)}
+                                                    className="h-4 w-4 text-indigo-600 border-slate-300 rounded"
+                                                />
+                                                <span className="text-sm text-slate-700">Responsável legal</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     ) : activeTab === 'students' && selectedStudent ? (
                         <div className="space-y-8 animate-fade-in">
-                             <div className="flex items-start justify-between border-b border-slate-100 pb-6">
+                            <div className="flex items-start justify-between border-b border-slate-100 pb-6">
                                 <div className="flex gap-4">
                                     <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center text-2xl font-bold text-slate-500">
-                                        {selectedStudent.name.substring(0,2).toUpperCase()}
+                                        {selectedStudent.name.substring(0, 2).toUpperCase()}
                                     </div>
                                     <div>
                                         <h2 className="text-2xl font-bold text-slate-800">{selectedStudent.name}</h2>
@@ -797,24 +887,110 @@ const RegistrationModule: React.FC = () => {
                                         </div>
                                     </div>
                                 </div>
+                                <button
+                                    onClick={() => handleDeleteStudent(selectedStudent.id)}
+                                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                    title="Excluir Aluno"
+                                >
+                                    <Trash2 size={20} />
+                                </button>
                             </div>
                             {/* ... Student Details ... */}
                         </div>
+                    ) : activeTab === 'staff' && isCreatingStaff ? (
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                                <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                    <Briefcase size={24} className="text-indigo-600" />
+                                    Novo Funcionário
+                                </h3>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleCancelCreation}
+                                        className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        onClick={handleSaveStaff}
+                                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2"
+                                    >
+                                        <Save size={16} /> Salvar
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Nome Completo</label>
+                                    <input
+                                        type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={staffFormData.name} onChange={e => setStaffFormData({ ...staffFormData, name: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Cargo / Função</label>
+                                    <select
+                                        className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={staffFormData.role} onChange={e => setStaffFormData({ ...staffFormData, role: e.target.value as any })}
+                                    >
+                                        <option value="Teacher">Professor</option>
+                                        <option value="Coordinator">Coordenador</option>
+                                        <option value="Admin">Administrativo</option>
+                                        <option value="Support">Apoio</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
+                                    <input
+                                        type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={staffFormData.department} onChange={e => setStaffFormData({ ...staffFormData, department: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+                                    <input
+                                        type="email" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={staffFormData.email} onChange={e => setStaffFormData({ ...staffFormData, email: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Telefone</label>
+                                    <input
+                                        type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={staffFormData.phone} onChange={e => setStaffFormData({ ...staffFormData, phone: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Data de Admissão</label>
+                                    <input
+                                        type="date" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={staffFormData.admissionDate} onChange={e => setStaffFormData({ ...staffFormData, admissionDate: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        </div>
                     ) : activeTab === 'staff' && selectedStaffMember ? (
-                         <div className="space-y-8 animate-fade-in">
-                             {/* ... Staff Details ... */}
-                               <div className="flex items-start justify-between border-b border-slate-100 pb-6">
+                        <div className="space-y-8 animate-fade-in">
+                            {/* ... Staff Details ... */}
+                            <div className="flex items-start justify-between border-b border-slate-100 pb-6">
                                 <div className="flex gap-4">
                                     <div className="w-20 h-20 bg-slate-200 rounded-full flex items-center justify-center text-2xl font-bold text-slate-500">
-                                        {selectedStaffMember.name.substring(0,2).toUpperCase()}
+                                        {selectedStaffMember.name.substring(0, 2).toUpperCase()}
                                     </div>
                                     <div>
                                         <h2 className="text-2xl font-bold text-slate-800">{selectedStaffMember.name}</h2>
                                         <p className="text-slate-500">{selectedStaffMember.role}</p>
                                     </div>
                                 </div>
+                                <button
+                                    onClick={() => handleDeleteStaff(selectedStaffMember.id)}
+                                    className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                                    title="Excluir Funcionário"
+                                >
+                                    <Trash2 size={20} />
+                                </button>
                             </div>
-                         </div>
+                        </div>
                     ) : (
                         <div className="h-full flex flex-col items-center justify-center text-slate-400">
                             {activeTab === 'students' ? (
