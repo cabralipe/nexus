@@ -27,7 +27,7 @@ const ClassAllocationModule: React.FC = () => {
     // Editing State
     const [isEditingClass, setIsEditingClass] = useState(false);
     const [editFormData, setEditFormData] = useState<SchoolClass | null>(null);
-    
+
     // Drag and Drop State
     const [draggedTeacherId, setDraggedTeacherId] = useState<string | null>(null);
 
@@ -125,15 +125,15 @@ const ClassAllocationModule: React.FC = () => {
 
     const availableStudents = useMemo(() => {
         if (!selectedClass) return [];
-        return students.filter(s => 
-            !selectedClass.enrolledStudentIds.includes(s.id) && 
+        return students.filter(s =>
+            !selectedClass.enrolledStudentIds.includes(s.id) &&
             s.name.toLowerCase().includes(studentSearch.toLowerCase())
         );
     }, [selectedClass, students, studentSearch]);
 
     const filteredTeachers = useMemo(() => {
-        return teachers.filter(t => 
-            t.name.toLowerCase().includes(teacherSearch.toLowerCase()) || 
+        return teachers.filter(t =>
+            t.name.toLowerCase().includes(teacherSearch.toLowerCase()) ||
             t.department.toLowerCase().includes(teacherSearch.toLowerCase())
         );
     }, [teachers, teacherSearch]);
@@ -230,7 +230,7 @@ const ClassAllocationModule: React.FC = () => {
     };
 
     const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault(); 
+        e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
     };
 
@@ -238,11 +238,11 @@ const ClassAllocationModule: React.FC = () => {
         e.preventDefault();
         // Check if we are in Edit Mode or View Mode to call correct handler
         if (draggedTeacherId) {
-             if (isEditingClass) {
+            if (isEditingClass) {
                 handleFormAssignTeacher(subject, draggedTeacherId);
-             } else if (selectedClassId) {
+            } else if (selectedClassId) {
                 handleAssignTeacher(selectedClassId, subject, draggedTeacherId);
-             }
+            }
         }
         setDraggedTeacherId(null);
     };
@@ -284,7 +284,7 @@ const ClassAllocationModule: React.FC = () => {
     };
 
     return (
-        <div className="h-[calc(100vh-120px)] flex flex-col gap-6">
+        <div className="flex flex-col gap-6 h-auto lg:h-[calc(100vh-120px)]">
             <div className="flex justify-between items-end">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800">Enturmação e Lotação</h2>
@@ -292,27 +292,26 @@ const ClassAllocationModule: React.FC = () => {
                 </div>
             </div>
 
-            <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 h-auto lg:h-full">
                 {/* LEFT SIDEBAR: CLASS LIST */}
-                <div className="col-span-3 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+                <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden h-[300px] lg:h-full">
                     <div className="p-4 border-b border-slate-100 bg-slate-50">
                         <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">Turmas Disponíveis</h3>
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 space-y-2">
                         {classes.map(cls => {
-                             const occupancy = cls.enrolledStudentIds.length;
-                             const percentage = (occupancy / cls.capacity) * 100;
-                             const isFull = occupancy >= cls.capacity;
+                            const occupancy = cls.enrolledStudentIds.length;
+                            const percentage = (occupancy / cls.capacity) * 100;
+                            const isFull = occupancy >= cls.capacity;
 
-                             return (
+                            return (
                                 <button
                                     key={cls.id}
                                     onClick={() => { setSelectedClassId(cls.id); setIsEditingClass(false); setViewMode('summary'); }}
-                                    className={`w-full text-left p-4 rounded-xl transition-all border ${
-                                        selectedClassId === cls.id 
-                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
+                                    className={`w-full text-left p-4 rounded-xl transition-all border ${selectedClassId === cls.id
+                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
                                         : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-slate-50'
-                                    }`}
+                                        }`}
                                 >
                                     <div className="flex justify-between items-start mb-2">
                                         <div className="font-bold text-lg">{cls.name}</div>
@@ -321,7 +320,7 @@ const ClassAllocationModule: React.FC = () => {
                                     <div className={`text-xs mb-3 ${selectedClassId === cls.id ? 'text-indigo-200' : 'text-slate-400'}`}>
                                         {cls.gradeLevel} • {cls.shift === 'Morning' ? 'Manhã' : cls.shift === 'Afternoon' ? 'Tarde' : 'Noite'}
                                     </div>
-                                    
+
                                     {/* Progress Bar */}
                                     <div className="space-y-1">
                                         <div className="flex justify-between text-xs font-medium">
@@ -329,23 +328,22 @@ const ClassAllocationModule: React.FC = () => {
                                             <span>{cls.capacity} vagas</span>
                                         </div>
                                         <div className={`h-1.5 rounded-full overflow-hidden ${selectedClassId === cls.id ? 'bg-indigo-800' : 'bg-slate-100'}`}>
-                                            <div 
-                                                className={`h-full rounded-full transition-all duration-500 ${
-                                                    isFull ? 'bg-rose-400' : 
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-500 ${isFull ? 'bg-rose-400' :
                                                     selectedClassId === cls.id ? 'bg-white' : 'bg-indigo-500'
-                                                }`} 
+                                                    }`}
                                                 style={{ width: `${Math.min(100, percentage)}%` }}
                                             />
                                         </div>
                                     </div>
                                 </button>
-                             );
+                            );
                         })}
                     </div>
                 </div>
 
                 {/* MAIN CONTENT AREA */}
-                <div className="col-span-9 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+                <div className="lg:col-span-9 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-auto min-h-[500px]">
                     {!selectedClass ? (
                         <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
                             <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4">
@@ -355,8 +353,8 @@ const ClassAllocationModule: React.FC = () => {
                             <p className="text-sm">Selecione uma turma à esquerda para gerenciar.</p>
                         </div>
                     ) : isEditingClass && editFormData ? (
-                        <div className="flex-1 flex flex-col p-8 animate-fade-in overflow-y-auto">
-                            <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+                        <div className="flex-1 flex flex-col p-8 animate-fade-in">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-4 border-b border-slate-100 gap-4 sm:gap-0">
                                 <div>
                                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                                         <Edit size={24} className="text-indigo-600" />
@@ -364,29 +362,29 @@ const ClassAllocationModule: React.FC = () => {
                                     </h2>
                                     <p className="text-slate-500 text-sm">Atualize os dados e a lotação de professores.</p>
                                 </div>
-                                <div className="flex gap-3">
-                                    <button 
+                                <div className="flex gap-3 w-full sm:w-auto">
+                                    <button
                                         onClick={handleCancelEdit}
-                                        className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
+                                        className="flex-1 sm:flex-none justify-center px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
                                     >
                                         <X size={16} /> Cancelar
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={handleSaveClass}
-                                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2"
+                                        className="flex-1 sm:flex-none justify-center px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2"
                                     >
                                         <Save size={16} /> Salvar Alterações
                                     </button>
                                 </div>
                             </div>
-                            
+
                             <div className="max-w-5xl mx-auto w-full space-y-8">
                                 {/* BASIC INFO SECTION */}
-                                <div className="grid grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Nome da Turma</label>
-                                        <input 
-                                            type="text" 
+                                        <input
+                                            type="text"
                                             className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                                             value={editFormData.name}
                                             onChange={e => setEditFormData({ ...editFormData, name: e.target.value })}
@@ -394,8 +392,8 @@ const ClassAllocationModule: React.FC = () => {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Ano Letivo</label>
-                                        <input 
-                                            type="number" 
+                                        <input
+                                            type="number"
                                             className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                                             value={editFormData.academicYear}
                                             onChange={e => setEditFormData({ ...editFormData, academicYear: parseInt(e.target.value) })}
@@ -403,8 +401,8 @@ const ClassAllocationModule: React.FC = () => {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Capacidade Máxima</label>
-                                        <input 
-                                            type="number" 
+                                        <input
+                                            type="number"
                                             className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                                             value={editFormData.capacity}
                                             onChange={e => setEditFormData({ ...editFormData, capacity: parseInt(e.target.value) })}
@@ -412,7 +410,7 @@ const ClassAllocationModule: React.FC = () => {
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Turno</label>
-                                        <select 
+                                        <select
                                             className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
                                             value={editFormData.shift}
                                             onChange={e => setEditFormData({ ...editFormData, shift: e.target.value as any })}
@@ -424,7 +422,7 @@ const ClassAllocationModule: React.FC = () => {
                                     </div>
                                     <div className="col-span-2">
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Nível de Ensino (Série)</label>
-                                        <select 
+                                        <select
                                             className="w-full border border-slate-300 rounded-lg p-2.5 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
                                             value={editFormData.gradeLevel}
                                             onChange={e => setEditFormData({ ...editFormData, gradeLevel: e.target.value })}
@@ -446,15 +444,15 @@ const ClassAllocationModule: React.FC = () => {
                                         <Briefcase size={20} className="text-indigo-600" />
                                         Alocação de Professores (Arrastar e Soltar)
                                     </h3>
-                                    
-                                    <div className="grid grid-cols-12 gap-6 h-[500px]">
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-auto lg:h-[500px]">
                                         {/* Source: Teachers */}
-                                        <div className="col-span-4 bg-slate-50 rounded-lg p-4 border border-slate-200 flex flex-col">
+                                        <div className="lg:col-span-4 bg-slate-50 rounded-lg p-4 border border-slate-200 flex flex-col h-[300px] lg:h-auto">
                                             <div className="mb-3">
-                                                 <div className="relative">
+                                                <div className="relative">
                                                     <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                    <input 
-                                                        type="text" 
+                                                    <input
+                                                        type="text"
                                                         placeholder="Buscar professor..."
                                                         className="w-full pl-8 pr-2 py-1.5 text-xs border border-slate-300 rounded-md outline-none focus:border-indigo-500"
                                                         value={teacherSearch}
@@ -464,14 +462,14 @@ const ClassAllocationModule: React.FC = () => {
                                             </div>
                                             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
                                                 {filteredTeachers.map(teacher => (
-                                                    <div 
+                                                    <div
                                                         key={teacher.id}
                                                         draggable
                                                         onDragStart={(e) => handleDragStart(e, teacher.id)}
                                                         className={`bg-white p-3 rounded-md border border-slate-200 shadow-sm cursor-grab active:cursor-grabbing hover:border-indigo-300 hover:shadow-md transition-all flex items-center gap-3 ${draggedTeacherId === teacher.id ? 'opacity-50 ring-2 ring-indigo-500' : ''}`}
                                                     >
                                                         <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-700">
-                                                            {teacher.name.substring(0,2).toUpperCase()}
+                                                            {teacher.name.substring(0, 2).toUpperCase()}
                                                         </div>
                                                         <div>
                                                             <div className="text-sm font-semibold text-slate-700">{teacher.name}</div>
@@ -483,42 +481,41 @@ const ClassAllocationModule: React.FC = () => {
                                         </div>
 
                                         {/* Target: Subjects */}
-                                        <div className="col-span-8 overflow-y-auto pr-2">
-                                            <div className="grid grid-cols-2 gap-3">
+                                        <div className="lg:col-span-8 overflow-y-auto pr-2 h-[400px] lg:h-auto">
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                                 {SUBJECTS_LIST.map(subject => {
                                                     const alloc = editFormData.teacherAllocations.find(t => t.subject === subject);
                                                     const teacher = alloc ? teachers.find(t => t.id === alloc.teacherId) : null;
                                                     const isDragging = draggedTeacherId !== null;
 
                                                     return (
-                                                        <div 
+                                                        <div
                                                             key={subject}
                                                             onDragOver={handleDragOver}
                                                             onDrop={(e) => handleDrop(e, subject)}
-                                                            className={`relative p-3 rounded-lg border-2 transition-all min-h-[80px] flex flex-col justify-center ${
-                                                                teacher 
-                                                                ? 'bg-white border-indigo-200 shadow-sm' 
-                                                                : isDragging 
-                                                                    ? 'bg-indigo-50 border-indigo-400 border-dashed' 
+                                                            className={`relative p-3 rounded-lg border-2 transition-all min-h-[80px] flex flex-col justify-center ${teacher
+                                                                ? 'bg-white border-indigo-200 shadow-sm'
+                                                                : isDragging
+                                                                    ? 'bg-indigo-50 border-indigo-400 border-dashed'
                                                                     : 'bg-slate-50 border-slate-200 border-dashed'
-                                                            }`}
+                                                                }`}
                                                         >
                                                             <div className="flex justify-between items-center mb-1">
                                                                 <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">{subject}</span>
                                                                 {teacher && (
-                                                                     <button 
+                                                                    <button
                                                                         onClick={() => handleFormRemoveTeacher(subject)}
                                                                         className="text-slate-400 hover:text-rose-500 transition-colors"
-                                                                     >
+                                                                    >
                                                                         <X size={14} />
-                                                                     </button>
+                                                                    </button>
                                                                 )}
                                                             </div>
-                                                            
+
                                                             {teacher ? (
                                                                 <div className="flex items-center gap-2 mt-1">
                                                                     <div className="w-6 h-6 rounded-full bg-indigo-600 flex items-center justify-center text-[10px] font-bold text-white">
-                                                                        {teacher.name.substring(0,2).toUpperCase()}
+                                                                        {teacher.name.substring(0, 2).toUpperCase()}
                                                                     </div>
                                                                     <span className="text-sm font-semibold text-slate-800">{teacher.name}</span>
                                                                 </div>
@@ -539,69 +536,67 @@ const ClassAllocationModule: React.FC = () => {
                     ) : (
                         <>
                             {/* Class Header */}
-                            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            {/* Class Header */}
+                            <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col xl:flex-row justify-between items-start xl:items-center bg-slate-50/50 gap-4">
                                 <div>
-                                    <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                                    <h2 className="text-xl md:text-2xl font-bold text-slate-800 flex flex-wrap items-center gap-2 md:gap-3">
                                         {selectedClass.name}
                                         <span className="px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-bold rounded-full border border-indigo-200 uppercase tracking-wide">
                                             {selectedClass.academicYear}
                                         </span>
                                     </h2>
-                                    <div className="flex gap-4 mt-2 text-sm text-slate-500 font-medium">
+                                    <div className="flex flex-wrap gap-2 md:gap-4 mt-2 text-sm text-slate-500 font-medium">
                                         <span className="flex items-center gap-1"><GraduationCap size={16} /> {selectedClass.gradeLevel}</span>
                                         <span className="flex items-center gap-1"><Clock size={16} /> {selectedClass.shift === 'Morning' ? 'Matutino' : selectedClass.shift === 'Afternoon' ? 'Vespertino' : 'Noturno'}</span>
                                     </div>
                                 </div>
-                                
-                                <div className="flex gap-3">
-                                    <button 
+
+                                <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+                                    <button
                                         onClick={handleEditClass}
-                                        className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm flex items-center gap-2 text-sm font-medium"
+                                        className="justify-center px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm flex items-center gap-2 text-sm font-medium"
                                         title="Editar Turma"
                                     >
                                         <Edit size={16} /> Editar
                                     </button>
 
                                     {/* View Switcher */}
-                                    <div className="bg-slate-200 p-1 rounded-lg flex">
-                                        <button 
+                                    <div className="bg-slate-200 p-1 rounded-lg flex overflow-x-auto">
+                                        <button
                                             onClick={() => setViewMode('summary')}
-                                            className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${
-                                                viewMode === 'summary' 
-                                                ? 'bg-white text-indigo-700 shadow-sm' 
+                                            className={`flex-1 whitespace-nowrap px-3 md:px-4 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${viewMode === 'summary'
+                                                ? 'bg-white text-indigo-700 shadow-sm'
                                                 : 'text-slate-500 hover:text-slate-700'
-                                            }`}
+                                                }`}
                                         >
-                                            <Layout size={16} /> Visão Geral
+                                            <Layout size={16} /> <span className="hidden md:inline">Visão Geral</span>
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={() => setViewMode('students')}
-                                            className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${
-                                                viewMode === 'students' 
-                                                ? 'bg-white text-indigo-700 shadow-sm' 
+                                            className={`flex-1 whitespace-nowrap px-3 md:px-4 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${viewMode === 'students'
+                                                ? 'bg-white text-indigo-700 shadow-sm'
                                                 : 'text-slate-500 hover:text-slate-700'
-                                            }`}
+                                                }`}
                                         >
                                             <Users size={16} /> Alunos
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={() => setViewMode('teachers')}
-                                            className={`px-4 py-2 rounded-md text-sm font-bold flex items-center gap-2 transition-all ${
-                                                viewMode === 'teachers' 
-                                                ? 'bg-white text-indigo-700 shadow-sm' 
+                                            className={`flex-1 whitespace-nowrap px-3 md:px-4 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${viewMode === 'teachers'
+                                                ? 'bg-white text-indigo-700 shadow-sm'
                                                 : 'text-slate-500 hover:text-slate-700'
-                                            }`}
+                                                }`}
                                         >
-                                            <Briefcase size={16} /> Professores
+                                            <Briefcase size={16} /> <span className="hidden md:inline">Professores</span>
                                         </button>
                                     </div>
                                 </div>
                             </div>
 
                             {/* View Content */}
-                            <div className="flex-1 overflow-hidden p-6 bg-slate-50/30">
+                            <div className="p-6 bg-slate-50/30">
                                 {viewMode === 'summary' ? (
-                                    <div className="h-full overflow-y-auto animate-fade-in">
+                                    <div className="animate-fade-in">
                                         {/* Metrics Row */}
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                                             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
@@ -613,13 +608,13 @@ const ClassAllocationModule: React.FC = () => {
                                                     {enrolledStudents.length} <span className="text-sm font-normal text-slate-400">/ {selectedClass.capacity}</span>
                                                 </h3>
                                                 <div className="w-full bg-slate-100 rounded-full h-1.5 mt-3 overflow-hidden">
-                                                    <div 
-                                                        className="bg-indigo-500 h-1.5 rounded-full" 
+                                                    <div
+                                                        className="bg-indigo-500 h-1.5 rounded-full"
                                                         style={{ width: `${(enrolledStudents.length / selectedClass.capacity) * 100}%` }}
                                                     ></div>
                                                 </div>
                                             </div>
-                                            
+
                                             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
                                                 <div className="flex justify-between items-start mb-2">
                                                     <p className="text-sm font-medium text-slate-500">Disciplinas</p>
@@ -651,14 +646,14 @@ const ClassAllocationModule: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
                                             {/* Students Summary List */}
-                                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[400px]">
+                                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-auto min-h-[300px]">
                                                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                                                     <h4 className="font-bold text-slate-700 flex items-center gap-2">
                                                         <Users size={16} /> Alunos Matriculados
                                                     </h4>
-                                                    <button 
+                                                    <button
                                                         onClick={() => setViewMode('students')}
                                                         className="text-xs font-bold text-indigo-600 hover:underline"
                                                     >
@@ -670,7 +665,7 @@ const ClassAllocationModule: React.FC = () => {
                                                         enrolledStudents.map(s => (
                                                             <div key={s.id} className="flex items-center gap-3 p-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
                                                                 <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-xs font-bold text-indigo-600">
-                                                                    {s.name.substring(0,2).toUpperCase()}
+                                                                    {s.name.substring(0, 2).toUpperCase()}
                                                                 </div>
                                                                 <span className="text-sm font-medium text-slate-700">{s.name}</span>
                                                             </div>
@@ -679,7 +674,7 @@ const ClassAllocationModule: React.FC = () => {
                                                         <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center">
                                                             <Users size={32} className="mb-2 opacity-50" />
                                                             <p className="text-sm">Nenhum aluno matriculado nesta turma.</p>
-                                                            <button 
+                                                            <button
                                                                 onClick={() => setViewMode('students')}
                                                                 className="mt-2 text-indigo-600 text-xs font-bold hover:underline"
                                                             >
@@ -691,12 +686,12 @@ const ClassAllocationModule: React.FC = () => {
                                             </div>
 
                                             {/* Teachers Summary List */}
-                                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-[400px]">
+                                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col h-auto min-h-[300px]">
                                                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
                                                     <h4 className="font-bold text-slate-700 flex items-center gap-2">
                                                         <Briefcase size={16} /> Quadro de Professores
                                                     </h4>
-                                                    <button 
+                                                    <button
                                                         onClick={() => setViewMode('teachers')}
                                                         className="text-xs font-bold text-indigo-600 hover:underline"
                                                     >
@@ -715,7 +710,7 @@ const ClassAllocationModule: React.FC = () => {
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="text-sm text-slate-600">{teacher.name}</span>
                                                                         <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-[10px] font-bold text-emerald-700">
-                                                                            {teacher.name.substring(0,2).toUpperCase()}
+                                                                            {teacher.name.substring(0, 2).toUpperCase()}
                                                                         </div>
                                                                     </div>
                                                                 ) : (
@@ -729,9 +724,9 @@ const ClassAllocationModule: React.FC = () => {
                                         </div>
                                     </div>
                                 ) : viewMode === 'students' ? (
-                                    <div className="grid grid-cols-2 gap-8 h-full">
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 min-h-[500px]">
                                         {/* Available List */}
-                                        <div className="flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                        <div className="flex flex-col h-[300px] lg:h-auto bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden order-2 lg:order-1">
                                             <div className="p-4 border-b border-slate-100 flex flex-col gap-3">
                                                 <div className="flex justify-between items-center">
                                                     <h4 className="font-bold text-slate-700">Alunos Disponíveis</h4>
@@ -739,8 +734,8 @@ const ClassAllocationModule: React.FC = () => {
                                                 </div>
                                                 <div className="relative">
                                                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                    <input 
-                                                        type="text" placeholder="Filtrar por nome..." 
+                                                    <input
+                                                        type="text" placeholder="Filtrar por nome..."
                                                         className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                                                         value={studentSearch} onChange={e => setStudentSearch(e.target.value)}
                                                     />
@@ -751,14 +746,14 @@ const ClassAllocationModule: React.FC = () => {
                                                     <div key={s.id} className="flex items-center justify-between p-3 hover:bg-slate-50 rounded-lg border border-transparent hover:border-indigo-100 group transition-all">
                                                         <div className="flex items-center gap-3">
                                                             <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
-                                                                {s.name.substring(0,2).toUpperCase()}
+                                                                {s.name.substring(0, 2).toUpperCase()}
                                                             </div>
                                                             <div>
                                                                 <div className="font-semibold text-sm text-slate-700">{s.name}</div>
                                                                 <div className="text-xs text-slate-400">Matrícula: {s.id}</div>
                                                             </div>
                                                         </div>
-                                                        <button 
+                                                        <button
                                                             onClick={() => handleToggleStudent(selectedClass.id, s.id)}
                                                             className="text-indigo-600 opacity-0 group-hover:opacity-100 p-2 hover:bg-indigo-50 rounded-full transition-all"
                                                         >
@@ -771,8 +766,8 @@ const ClassAllocationModule: React.FC = () => {
                                         </div>
 
                                         {/* Enrolled List */}
-                                        <div className="flex flex-col h-full bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
-                                             <div className="p-4 border-b border-indigo-100 bg-indigo-50 flex justify-between items-center">
+                                        <div className="flex flex-col h-[300px] lg:h-auto bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden order-1 lg:order-2">
+                                            <div className="p-4 border-b border-indigo-100 bg-indigo-50 flex justify-between items-center">
                                                 <h4 className="font-bold text-indigo-900">Alunos Matriculados</h4>
                                                 <span className="text-xs bg-white px-2 py-1 rounded text-indigo-600 font-bold border border-indigo-100">
                                                     {enrolledStudents.length} / {selectedClass.capacity}
@@ -782,14 +777,14 @@ const ClassAllocationModule: React.FC = () => {
                                                 {enrolledStudents.map(s => (
                                                     <div key={s.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-lg shadow-sm mb-2 group">
                                                         <div className="flex items-center gap-3">
-                                                            <button 
+                                                            <button
                                                                 onClick={() => handleToggleStudent(selectedClass.id, s.id)}
                                                                 className="text-rose-400 p-1 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
                                                             >
                                                                 <ArrowLeft size={16} />
                                                             </button>
                                                             <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-xs font-bold text-indigo-600">
-                                                                {s.name.substring(0,2).toUpperCase()}
+                                                                {s.name.substring(0, 2).toUpperCase()}
                                                             </div>
                                                             <div>
                                                                 <div className="font-semibold text-sm text-slate-800">{s.name}</div>
@@ -810,9 +805,9 @@ const ClassAllocationModule: React.FC = () => {
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+                                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[500px]">
                                         {/* Teachers Source Column */}
-                                        <div className="lg:col-span-4 flex flex-col h-full bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                        <div className="lg:col-span-4 flex flex-col h-[300px] lg:h-auto bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                             <div className="p-4 border-b border-slate-100 flex flex-col gap-3">
                                                 <h4 className="font-bold text-slate-700 flex items-center gap-2">
                                                     <Users size={18} className="text-indigo-600" />
@@ -820,8 +815,8 @@ const ClassAllocationModule: React.FC = () => {
                                                 </h4>
                                                 <div className="relative">
                                                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                                    <input 
-                                                        type="text" placeholder="Buscar docente..." 
+                                                    <input
+                                                        type="text" placeholder="Buscar docente..."
                                                         className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
                                                         value={teacherSearch} onChange={e => setTeacherSearch(e.target.value)}
                                                     />
@@ -830,7 +825,7 @@ const ClassAllocationModule: React.FC = () => {
                                             </div>
                                             <div className="flex-1 overflow-y-auto p-2 space-y-2">
                                                 {filteredTeachers.map(teacher => (
-                                                    <div 
+                                                    <div
                                                         key={teacher.id}
                                                         draggable
                                                         onDragStart={(e) => handleDragStart(e, teacher.id)}
@@ -840,7 +835,7 @@ const ClassAllocationModule: React.FC = () => {
                                                             <GripVertical size={20} />
                                                         </div>
                                                         <div className="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-700 font-bold text-xs">
-                                                            {teacher.name.substring(0,2).toUpperCase()}
+                                                            {teacher.name.substring(0, 2).toUpperCase()}
                                                         </div>
                                                         <div>
                                                             <div className="text-sm font-semibold text-slate-800">{teacher.name}</div>
@@ -853,36 +848,35 @@ const ClassAllocationModule: React.FC = () => {
                                         </div>
 
                                         {/* Curriculum Grid Drop Targets */}
-                                        <div className="lg:col-span-8 flex flex-col h-full overflow-hidden">
-                                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex-1 overflow-y-auto">
+                                        <div className="lg:col-span-8 flex flex-col h-auto min-h-[500px] overflow-hidden">
+                                            <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex-1">
                                                 <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
                                                     <Briefcase size={18} className="text-indigo-600" />
                                                     Grade Curricular
                                                 </h4>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 gap-4">
                                                     {SUBJECTS_LIST.map(subject => {
                                                         const allocation = selectedClass.teacherAllocations.find(t => t.subject === subject);
                                                         const allocatedTeacher = allocation ? teachers.find(t => t.id === allocation.teacherId) : null;
-                                                        
+
                                                         const isDragging = draggedTeacherId !== null;
 
                                                         return (
-                                                            <div 
+                                                            <div
                                                                 key={subject}
                                                                 onDragOver={handleDragOver}
                                                                 onDrop={(e) => handleDrop(e, subject)}
-                                                                className={`p-4 rounded-xl border-2 transition-all min-h-[100px] flex flex-col justify-between ${
-                                                                    allocatedTeacher 
-                                                                        ? 'bg-white border-indigo-100 shadow-sm' 
-                                                                        : isDragging 
-                                                                            ? 'bg-indigo-50 border-indigo-400 border-dashed shadow-inner' 
-                                                                            : 'bg-slate-50 border-slate-200 border-dashed hover:border-indigo-300 hover:bg-indigo-50/30'
-                                                                }`}
+                                                                className={`p-4 rounded-xl border-2 transition-all min-h-[100px] flex flex-col justify-between ${allocatedTeacher
+                                                                    ? 'bg-white border-indigo-100 shadow-sm'
+                                                                    : isDragging
+                                                                        ? 'bg-indigo-50 border-indigo-400 border-dashed shadow-inner'
+                                                                        : 'bg-slate-50 border-slate-200 border-dashed hover:border-indigo-300 hover:bg-indigo-50/30'
+                                                                    }`}
                                                             >
                                                                 <div className="flex justify-between items-start mb-2">
                                                                     <div className="font-bold text-slate-700">{subject}</div>
                                                                     {allocatedTeacher ? (
-                                                                         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase tracking-wide">Definido</span>
+                                                                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase tracking-wide">Definido</span>
                                                                     ) : (
                                                                         <span className="px-2 py-0.5 bg-slate-200 text-slate-500 text-[10px] font-bold rounded uppercase tracking-wide">Vago</span>
                                                                     )}
@@ -892,11 +886,11 @@ const ClassAllocationModule: React.FC = () => {
                                                                     <div className="flex items-center justify-between mt-2 bg-indigo-50 p-2 rounded-lg border border-indigo-100 group">
                                                                         <div className="flex items-center gap-2">
                                                                             <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center text-xs font-bold text-indigo-700 border border-indigo-200">
-                                                                                {allocatedTeacher.name.substring(0,2).toUpperCase()}
+                                                                                {allocatedTeacher.name.substring(0, 2).toUpperCase()}
                                                                             </div>
                                                                             <span className="text-sm font-medium text-indigo-900 line-clamp-1">{allocatedTeacher.name}</span>
                                                                         </div>
-                                                                        <button 
+                                                                        <button
                                                                             onClick={() => handleRemoveTeacher(selectedClass.id, subject)}
                                                                             className="text-indigo-300 hover:text-rose-500 transition-colors p-1"
                                                                             title="Remover professor"
