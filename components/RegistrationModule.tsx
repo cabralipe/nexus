@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { UserPlus, Search, MapPin, Phone, Heart, ShieldAlert, FileText, User, Users, Briefcase, Save, X, Plus, Trash2, School, CheckSquare, Square, ChevronRight, ArrowRight, ArrowLeft } from 'lucide-react';
+import { UserPlus, Search, MapPin, Phone, Heart, ShieldAlert, FileText, User, Users, Briefcase, Save, X, Plus, Trash2, School, CheckSquare, Square, ChevronRight, ArrowRight, ArrowLeft, Pencil } from 'lucide-react';
 import { StudentProfile, Staff, EmergencyContact, SchoolClass } from '../types';
 import { backend } from '../services/backendService';
 
@@ -209,58 +209,101 @@ const RegistrationModule: React.FC = () => {
         setIsCreatingStaff(false);
     };
 
+    const handleEditStudent = () => {
+        if (!selectedStudent) return;
+        setFormData({
+            ...selectedStudent,
+            healthInfo: {
+                ...selectedStudent.healthInfo,
+                allergies: [...selectedStudent.healthInfo.allergies],
+                medications: [...selectedStudent.healthInfo.medications],
+            },
+            emergencyContacts: selectedStudent.emergencyContacts.map(c => ({ ...c })),
+        });
+        setAllergiesInput(selectedStudent.healthInfo.allergies.join(', '));
+        setMedsInput(selectedStudent.healthInfo.medications.join(', '));
+        setStudentEmail(''); // Email not available in profile, user must re-enter if updating
+        setStudentPassword('');
+        setEnrollmentCode(''); // Might need to fetch or leave empty if not updating
+        setStudentStatus('active'); // Defaulting as checking current status is not supported by frontend model yet
+        setIsCreatingStudent(true);
+    };
+
     const handleSaveStudent = async () => {
         const [firstName, ...rest] = formData.name.trim().split(' ');
         const lastName = rest.join(' ');
-        if (!studentEmail || !studentPassword) {
-            alert('Informe email e senha para criar o usuario do aluno.');
-            return;
-        }
-        if (studentPassword.length < 8) {
-            alert('A senha precisa ter pelo menos 8 caracteres.');
-            return;
-        }
-        const newStudent: StudentProfile = {
-            ...formData,
-            id: Math.random().toString(36).substr(2, 9),
-            healthInfo: {
-                ...formData.healthInfo,
-                allergies: allergiesInput.split(',').map(s => s.trim()).filter(Boolean),
-                medications: medsInput.split(',').map(s => s.trim()).filter(Boolean)
+
+        if (!selectedStudentId) {
+            if (!studentEmail || !studentPassword) {
+                alert('Informe email e senha para criar o usuario do aluno.');
+                return;
             }
+            if (studentPassword.length < 8) {
+                alert('A senha precisa ter pelo menos 8 caracteres.');
+                return;
+            }
+        }
+
+        const healthInfo = {
+            ...formData.healthInfo,
+            allergies: allergiesInput.split(',').map(s => s.trim()).filter(Boolean),
+            medications: medsInput.split(',').map(s => s.trim()).filter(Boolean)
         };
+
+        const payload: any = {
+            first_name: firstName,
+            last_name: lastName,
+            dob: formData.dob,
+            cpf: formData.cpf,
+            mainAddress: formData.mainAddress,
+            reserveAddress: formData.reserveAddress,
+            enrollment_code: enrollmentCode,
+            tuition_status: formData.tuitionStatus,
+            status: studentStatus,
+            healthInfo: healthInfo,
+            emergency_contacts: formData.emergencyContacts,
+        };
+
+        if (studentEmail) payload.email = studentEmail;
+        if (studentPassword) payload.password = studentPassword;
+
         try {
-            const created = await backend.createStudent({
-                first_name: firstName,
-                last_name: lastName,
-                dob: formData.dob,
-                cpf: formData.cpf,
-                mainAddress: formData.mainAddress,
-                reserveAddress: formData.reserveAddress,
-                enrollment_code: enrollmentCode,
-                tuition_status: formData.tuitionStatus,
-                status: studentStatus,
-                email: studentEmail,
-                password: studentPassword,
-                auto_create_user: true,
-                healthInfo: newStudent.healthInfo,
-                emergency_contacts: formData.emergencyContacts,
-            });
-            if (created.user_credentials) {
-                setCreatedCredentials({
-                    username: created.user_credentials.username,
-                    password: created.user_credentials.password,
-                });
+            if (selectedStudentId) {
+                // Update
+                await backend.updateStudent(selectedStudentId, payload);
+                const updatedStudent: StudentProfile = {
+                    ...formData,
+                    id: selectedStudentId,
+                    name: formData.name, // keep name as is from form
+                    healthInfo
+                };
+                setStudents(prev => prev.map(s => s.id === selectedStudentId ? updatedStudent : s));
+                setIsCreatingStudent(false);
+                // Keep selection
             } else {
-                setCreatedCredentials(null);
+                // Create
+                const created = await backend.createStudent({
+                    ...payload,
+                    auto_create_user: true
+                });
+                if (created.user_credentials) {
+                    setCreatedCredentials({
+                        username: created.user_credentials.username,
+                        password: created.user_credentials.password,
+                    });
+                } else {
+                    setCreatedCredentials(null);
+                }
+                const createdStudent: StudentProfile = {
+                    ...formData,
+                    id: String(created.id),
+                    // Ensure ID is set from backend response
+                    healthInfo // Use processed health info
+                };
+                setStudents([...students, createdStudent]);
+                setIsCreatingStudent(false);
+                setSelectedStudentId(createdStudent.id);
             }
-            const createdStudent: StudentProfile = {
-                ...newStudent,
-                id: String(created.id),
-            };
-            setStudents([...students, createdStudent]);
-            setIsCreatingStudent(false);
-            setSelectedStudentId(createdStudent.id);
         } catch (error) {
             console.error("Failed to save student", error);
         }
@@ -659,7 +702,7 @@ const RegistrationModule: React.FC = () => {
                             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                                 <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                                     <UserPlus size={24} className="text-indigo-600" />
-                                    Novo Cadastro de Aluno
+                                    {selectedStudentId ? 'Editar Aluno' : 'Novo Cadastro de Aluno'}
                                 </h3>
                                 <div className="flex gap-2">
                                     <button
@@ -672,7 +715,7 @@ const RegistrationModule: React.FC = () => {
                                         onClick={handleSaveStudent}
                                         className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2"
                                     >
-                                        <Save size={16} /> Salvar Cadastro
+                                        <Save size={16} /> {selectedStudentId ? 'Salvar Alterações' : 'Salvar Cadastro'}
                                     </button>
                                 </div>
                             </div>
@@ -887,6 +930,13 @@ const RegistrationModule: React.FC = () => {
                                         </div>
                                     </div>
                                 </div>
+                                <button
+                                    onClick={handleEditStudent}
+                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                    title="Editar Aluno"
+                                >
+                                    <Pencil size={20} />
+                                </button>
                                 <button
                                     onClick={() => handleDeleteStudent(selectedStudent.id)}
                                     className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
