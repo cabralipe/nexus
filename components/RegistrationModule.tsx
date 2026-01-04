@@ -498,34 +498,34 @@ const RegistrationModule: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800">Cadastros Gerais</h2>
                     <p className="text-slate-500">Gestão de dados de alunos, turmas e colaboradores.</p>
                 </div>
-                <div className="flex bg-white rounded-lg p-1 border border-slate-200 shadow-sm">
+                <div className="flex w-full md:w-auto bg-white rounded-lg p-1 border border-slate-200 shadow-sm overflow-x-auto">
                     <button
                         onClick={() => { setActiveTab('students'); resetSelection(); }}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'students' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex-1 md:flex-none px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'students' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
                         Alunos
                     </button>
                     <button
                         onClick={() => { setActiveTab('classes'); resetSelection(); }}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'classes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex-1 md:flex-none px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'classes' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
                         Turmas
                     </button>
                     <button
                         onClick={() => { setActiveTab('staff'); resetSelection(); }}
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${activeTab === 'staff' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                        className={`flex-1 md:flex-none px-4 py-2 text-sm font-medium rounded-md transition-all whitespace-nowrap ${activeTab === 'staff' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
                     >
                         Equipe
                     </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-auto lg:h-[calc(100vh-200px)]">
                 {/* Left Column: List */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
                     <div className="p-4 border-b border-slate-100">
@@ -632,7 +632,7 @@ const RegistrationModule: React.FC = () => {
                                         </button>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">Nome da Turma (Identificador)</label>
                                         <input
@@ -653,9 +653,9 @@ const RegistrationModule: React.FC = () => {
                                         </select>
                                     </div>
 
-                                    <div className="col-span-2 border-t border-slate-100 pt-4 mt-2">
+                                    <div className="col-span-1 md:col-span-2 border-t border-slate-100 pt-4 mt-2">
                                         <label className="block text-sm font-bold text-slate-700 mb-3">Nível e Série</label>
-                                        <div className="grid grid-cols-2 gap-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div>
                                                 <label className="block text-xs font-semibold text-slate-500 mb-1">Etapa de Ensino</label>
                                                 <select
