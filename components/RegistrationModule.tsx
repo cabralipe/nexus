@@ -229,6 +229,26 @@ const RegistrationModule: React.FC = () => {
         setIsCreatingStudent(true);
     };
 
+    const handleEditClass = () => {
+        if (!selectedClass) return;
+        setClassFormData({
+            ...selectedClass,
+        });
+
+        // Inverse mapping for Education Level based on Grade Level if possible, or just default to empty/first
+        // This is a simplification; ideally we store the education level or derive it.
+        // For now, we'll try to match the gradeLevel to a key in EDUCATION_LEVELS
+        let foundLevel = '';
+        for (const [level, grades] of Object.entries(EDUCATION_LEVELS)) {
+            if (grades.includes(selectedClass.gradeLevel)) {
+                foundLevel = level;
+                break;
+            }
+        }
+        setSelectedEducationLevel(foundLevel);
+        setIsCreatingClass(true);
+    };
+
     const handleSaveStudent = async () => {
         const [firstName, ...rest] = formData.name.trim().split(' ');
         const lastName = rest.join(' ');
@@ -312,7 +332,7 @@ const RegistrationModule: React.FC = () => {
     const handleSaveClass = async () => {
         const newClass: SchoolClass = {
             ...classFormData,
-            id: Math.random().toString(36).substr(2, 9),
+            id: selectedClassId || Math.random().toString(36).substr(2, 9),
         };
         try {
             const shiftMap: Record<SchoolClass['shift'], string> = {
@@ -320,20 +340,36 @@ const RegistrationModule: React.FC = () => {
                 Afternoon: 'afternoon',
                 Night: 'evening'
             };
-            const created = await backend.createClassroom({
+
+            const payload = {
                 name: newClass.name,
                 gradeLevel: newClass.gradeLevel,
                 academicYear: newClass.academicYear,
                 shift: shiftMap[newClass.shift],
                 capacity: newClass.capacity,
-            });
-            const createdClass: SchoolClass = {
-                ...newClass,
-                id: String(created.id),
             };
-            setClasses([...classes, createdClass]);
-            setIsCreatingClass(false);
-            setSelectedClassId(createdClass.id);
+
+            if (selectedClassId) {
+                // Update
+                await backend.updateClassroom(selectedClassId, payload);
+                const updatedClass: SchoolClass = {
+                    ...newClass,
+                    id: selectedClassId
+                };
+                setClasses(prev => prev.map(c => c.id === selectedClassId ? updatedClass : c));
+                setIsCreatingClass(false);
+                // Keep selection
+            } else {
+                // Create
+                const created = await backend.createClassroom(payload);
+                const createdClass: SchoolClass = {
+                    ...newClass,
+                    id: String(created.id),
+                };
+                setClasses([...classes, createdClass]);
+                setIsCreatingClass(false);
+                setSelectedClassId(createdClass.id);
+            }
         } catch (error) {
             console.error("Failed to save class", error);
         }
@@ -555,7 +591,7 @@ const RegistrationModule: React.FC = () => {
                                 <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                                     <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                                         <School size={24} className="text-indigo-600" />
-                                        Nova Turma
+                                        {selectedClassId ? 'Editar Turma' : 'Nova Turma'}
                                     </h3>
                                     <div className="flex gap-2">
                                         <button
@@ -569,7 +605,7 @@ const RegistrationModule: React.FC = () => {
                                             disabled={!classFormData.name || !classFormData.gradeLevel}
                                             className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50"
                                         >
-                                            <Save size={16} /> Salvar Turma
+                                            <Save size={16} /> {selectedClassId ? 'Salvar Alterações' : 'Salvar Turma'}
                                         </button>
                                     </div>
                                 </div>
@@ -670,6 +706,13 @@ const RegistrationModule: React.FC = () => {
                                                 <span className="text-sm text-slate-400">/ {selectedClass.capacity}</span>
                                             </div>
                                         </div>
+                                        <button
+                                            onClick={handleEditClass}
+                                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                                            title="Editar Turma"
+                                        >
+                                            <Pencil size={20} />
+                                        </button>
                                         <button
                                             onClick={() => handleDeleteClass(selectedClass.id)}
                                             className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
