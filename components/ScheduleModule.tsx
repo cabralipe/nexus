@@ -773,19 +773,21 @@ const ScheduleModule: React.FC = () => {
                                                                         {/* HOVER MENU TO SELECT SUBJECT */}
                                                                         <div className="absolute top-full left-0 z-10 w-48 bg-white border border-slate-200 shadow-xl rounded-lg overflow-hidden hidden group-hover:block max-h-48 overflow-y-auto">
                                                                             <div className="p-2 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase">Atribuir Aula</div>
-                                                                            {selectedClass?.teacherAllocations.map(alloc => (
-                                                                                <button
-                                                                                    key={alloc.subject}
-                                                                                    onClick={() => handleSetSubject(dayIndex, slotIndex, alloc.subject)}
-                                                                                    className="w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 text-slate-700 border-b border-slate-50 last:border-0"
-                                                                                >
-                                                                                    <span className="font-bold">{alloc.subject}</span>
-                                                                                    {/* Find teacher name */}
-                                                                                    <span className="block text-[10px] text-slate-400">
-                                                                                        {teachers.find(t => t.id === alloc.teacherId)?.name || 'Sem prof.'}
-                                                                                    </span>
-                                                                                </button>
-                                                                            ))}
+                                                                            {selectedClass?.teacherAllocations
+                                                                                .filter(alloc => !isSlotUnavailable(alloc.teacherId, dayIndex, slotIndex))
+                                                                                .map(alloc => (
+                                                                                    <button
+                                                                                        key={alloc.subject}
+                                                                                        onClick={() => handleSetSubject(dayIndex, slotIndex, alloc.subject)}
+                                                                                        className="w-full text-left px-3 py-2 text-xs hover:bg-indigo-50 text-slate-700 border-b border-slate-50 last:border-0"
+                                                                                    >
+                                                                                        <span className="font-bold">{alloc.subject}</span>
+                                                                                        {/* Find teacher name */}
+                                                                                        <span className="block text-[10px] text-slate-400">
+                                                                                            {teachers.find(t => t.id === alloc.teacherId)?.name || 'Sem prof.'}
+                                                                                        </span>
+                                                                                    </button>
+                                                                                ))}
                                                                             <button
                                                                                 onClick={() => handleSetSubject(dayIndex, slotIndex, '')}
                                                                                 className="w-full text-left px-3 py-2 text-xs hover:bg-rose-50 text-rose-600 font-bold"
