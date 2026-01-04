@@ -284,7 +284,7 @@ const ClassAllocationModule: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col gap-6 h-auto lg:h-[calc(100vh-120px)]">
+        <div className="flex flex-col gap-6 min-h-[calc(100vh-120px)]">
             <div className="flex justify-between items-end">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800">Enturmação e Lotação</h2>
@@ -292,9 +292,9 @@ const ClassAllocationModule: React.FC = () => {
                 </div>
             </div>
 
-            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 h-auto lg:h-full">
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 h-auto">
                 {/* LEFT SIDEBAR: CLASS LIST */}
-                <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden h-[300px] lg:h-full">
+                <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden h-[300px] lg:h-auto">
                     <div className="p-4 border-b border-slate-100 bg-slate-50">
                         <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">Turmas Disponíveis</h3>
                     </div>
