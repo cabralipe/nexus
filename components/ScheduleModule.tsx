@@ -41,7 +41,7 @@ const INITIAL_SCHEDULE_DATA: ScheduleMap = {
 
 const ScheduleModule: React.FC = () => {
     const [mode, setMode] = useState<Mode>('availability');
-    
+
     // Time Slot Configuration State
     const [timeSlots, setTimeSlots] = useState<TimeSlotItem[]>([]);
     const [newSlotStart, setNewSlotStart] = useState('');
@@ -49,7 +49,7 @@ const ScheduleModule: React.FC = () => {
 
     const [teachers, setTeachers] = useState<Staff[]>([]);
     const [classes, setClasses] = useState<SchoolClass[]>([]);
-    
+
     // Default to first teacher for demo purposes if null
     const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
     const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
@@ -272,7 +272,7 @@ const ScheduleModule: React.FC = () => {
 
     // --- Schedule Logic ---
     const selectedClass = classes.find(c => c.id === selectedClassId);
-    
+
     const handleSetSubject = async (dayIndex: number, slotIndex: number, subject: string) => {
         if (!selectedClassId) return;
         const slot = timeSlots[slotIndex];
@@ -307,11 +307,13 @@ const ScheduleModule: React.FC = () => {
                 return;
             }
 
+            const teacherId = selectedClass?.teacherAllocations.find(t => t.subject === subject)?.teacherId;
             const created = await backend.setSchedule({
                 classroom_id: selectedClassId,
                 time_slot_id: slot.id,
                 day_of_week: dayIndex,
                 subject,
+                teacher_id: teacherId,
             });
             setScheduleIds(prev => ({ ...prev, [key]: String(created.id) }));
             setSchedules(prev => {
@@ -348,7 +350,7 @@ const ScheduleModule: React.FC = () => {
         classes.forEach(cls => {
             // Check if teacher is allocated to any subject in this class
             const teacherAllocations = cls.teacherAllocations.filter(t => t.teacherId === selectedTeacherId);
-            
+
             if (teacherAllocations.length > 0) {
                 // Get the schedule for this class
                 const classSchedule = schedules[cls.id];
@@ -359,7 +361,7 @@ const ScheduleModule: React.FC = () => {
                     const dayIdx = parseInt(dayIdxStr);
                     Object.entries(slots).forEach(([slotIdxStr, subject]) => {
                         const slotIdx = parseInt(slotIdxStr);
-                        
+
                         // If the subject at this slot matches one of the teacher's allocated subjects
                         if (teacherAllocations.some(t => t.subject === subject)) {
                             if (!personalSchedule[dayIdx]) personalSchedule[dayIdx] = {};
@@ -379,8 +381,8 @@ const ScheduleModule: React.FC = () => {
     const currentTeacherName = teachers.find(t => t.id === selectedTeacherId)?.name;
 
     return (
-        <div className="space-y-6 h-[calc(100vh-140px)] flex flex-col">
-             <style>{`
+        <div className="space-y-6 h-auto lg:h-[calc(100vh-140px)] flex flex-col">
+            <style>{`
                 @media print {
                     body * {
                         visibility: hidden;
@@ -404,32 +406,32 @@ const ScheduleModule: React.FC = () => {
                 }
             `}</style>
 
-            <div className="flex justify-between items-center no-print">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 no-print">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800">Grade e Horários</h2>
                     <p className="text-slate-500">Defina a disponibilidade dos professores e monte o quadro de aulas.</p>
                 </div>
-                <div className="bg-slate-200 p-1 rounded-lg flex overflow-x-auto">
-                    <button 
+                <div className="bg-slate-200 p-1 rounded-lg flex overflow-x-auto w-full lg:w-auto">
+                    <button
                         onClick={() => setMode('personal')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'personal' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         <Layout size={16} /> Minha Grade
                     </button>
                     <div className="w-px bg-slate-300 mx-1 my-2"></div>
-                    <button 
+                    <button
                         onClick={() => setMode('configuration')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'configuration' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         <Settings size={16} /> Definição
                     </button>
-                    <button 
+                    <button
                         onClick={() => setMode('availability')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'availability' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         <User size={16} /> Disponibilidade
                     </button>
-                    <button 
+                    <button
                         onClick={() => setMode('timetable')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'timetable' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
@@ -438,10 +440,10 @@ const ScheduleModule: React.FC = () => {
                 </div>
             </div>
 
-            <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
+            <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
                 {/* Left Sidebar or Config Panel */}
                 {mode === 'configuration' ? (
-                    <div className="col-span-12 grid grid-cols-3 gap-6">
+                    <div className="col-span-1 lg:col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {/* Config Form */}
                         <div className="col-span-1 bg-white rounded-xl shadow-sm border border-slate-100 p-6 h-fit">
                             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -451,8 +453,8 @@ const ScheduleModule: React.FC = () => {
                             <div className="space-y-4">
                                 <div>
                                     <label className="text-xs font-semibold text-slate-600 block mb-1">Início da Aula</label>
-                                    <input 
-                                        type="time" 
+                                    <input
+                                        type="time"
                                         className="w-full border border-slate-200 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                                         value={newSlotStart}
                                         onChange={(e) => setNewSlotStart(e.target.value)}
@@ -460,14 +462,14 @@ const ScheduleModule: React.FC = () => {
                                 </div>
                                 <div>
                                     <label className="text-xs font-semibold text-slate-600 block mb-1">Fim da Aula</label>
-                                    <input 
-                                        type="time" 
+                                    <input
+                                        type="time"
                                         className="w-full border border-slate-200 rounded p-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                                         value={newSlotEnd}
                                         onChange={(e) => setNewSlotEnd(e.target.value)}
                                     />
                                 </div>
-                                <button 
+                                <button
                                     onClick={handleAddSlot}
                                     className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 flex items-center justify-center gap-2"
                                 >
@@ -477,7 +479,7 @@ const ScheduleModule: React.FC = () => {
                         </div>
 
                         {/* List of Slots */}
-                        <div className="col-span-2 bg-white rounded-xl shadow-sm border border-slate-100 p-6 flex flex-col">
+                        <div className="col-span-1 lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-100 p-6 flex flex-col">
                             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                                 <Clock size={20} className="text-indigo-600" />
                                 Horários Definidos ({timeSlots.length})
@@ -497,7 +499,7 @@ const ScheduleModule: React.FC = () => {
                                                     {slot.end}
                                                 </div>
                                             </div>
-                                            <button 
+                                            <button
                                                 onClick={() => handleDeleteSlot(index)}
                                                 className="text-slate-400 hover:text-rose-600 p-2 hover:bg-rose-50 rounded transition-all"
                                                 title="Remover horário"
@@ -517,7 +519,7 @@ const ScheduleModule: React.FC = () => {
                         </div>
                     </div>
                 ) : mode === 'personal' ? (
-                     <div id="personal-schedule-container" className="col-span-12 flex flex-col h-full bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div id="personal-schedule-container" className="col-span-12 flex flex-col h-full bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                             <div>
                                 <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
@@ -530,7 +532,7 @@ const ScheduleModule: React.FC = () => {
                                 {/* Simulator for Demo Purposes */}
                                 <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
                                     <span className="text-xs text-slate-500 font-bold uppercase">Vendo como:</span>
-                                    <select 
+                                    <select
                                         value={selectedTeacherId || ''}
                                         onChange={(e) => setSelectedTeacherId(e.target.value)}
                                         className="text-sm font-medium text-slate-700 outline-none bg-transparent"
@@ -540,8 +542,8 @@ const ScheduleModule: React.FC = () => {
                                         ))}
                                     </select>
                                 </div>
-                                
-                                <button 
+
+                                <button
                                     onClick={handlePrint}
                                     className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-50 hover:text-indigo-600 transition-colors"
                                 >
@@ -551,7 +553,7 @@ const ScheduleModule: React.FC = () => {
                         </div>
 
                         <div className="flex-1 overflow-auto p-6">
-                             <div className="grid grid-cols-6 gap-3 min-w-[800px]">
+                            <div className="grid grid-cols-6 gap-3 min-w-[800px]">
                                 {/* Header Row */}
                                 <div className="p-3 font-bold text-slate-400 text-xs uppercase text-center flex items-center justify-center bg-slate-50 rounded-lg border border-slate-200">Horário</div>
                                 {DAYS.map(day => (
@@ -570,15 +572,14 @@ const ScheduleModule: React.FC = () => {
                                         </div>
                                         {DAYS.map((_, dayIndex) => {
                                             const scheduleItem = getTeacherPersonalSchedule[dayIndex]?.[slotIndex];
-                                            
+
                                             return (
-                                                <div 
-                                                    key={`${dayIndex}-${slotIndex}`} 
-                                                    className={`rounded-xl border p-3 flex flex-col justify-center min-h-[100px] transition-all relative overflow-hidden ${
-                                                        scheduleItem 
-                                                        ? 'bg-white border-indigo-100 shadow-sm hover:shadow-md hover:border-indigo-300 group' 
+                                                <div
+                                                    key={`${dayIndex}-${slotIndex}`}
+                                                    className={`rounded-xl border p-3 flex flex-col justify-center min-h-[100px] transition-all relative overflow-hidden ${scheduleItem
+                                                        ? 'bg-white border-indigo-100 shadow-sm hover:shadow-md hover:border-indigo-300 group'
                                                         : 'bg-slate-50/50 border-slate-100 border-dashed'
-                                                    }`}
+                                                        }`}
                                                 >
                                                     {scheduleItem ? (
                                                         <>
@@ -605,11 +606,11 @@ const ScheduleModule: React.FC = () => {
                                 ))}
                             </div>
                         </div>
-                     </div>
+                    </div>
                 ) : (
                     <>
                         {/* Left Sidebar: List */}
-                        <div className="col-span-3 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+                        <div className="col-span-1 lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden max-h-[300px] lg:max-h-none">
                             <div className="p-4 border-b border-slate-100 bg-slate-50">
                                 <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">
                                     {mode === 'availability' ? 'Professores' : 'Turmas'}
@@ -621,11 +622,10 @@ const ScheduleModule: React.FC = () => {
                                         <button
                                             key={t.id}
                                             onClick={() => setSelectedTeacherId(t.id)}
-                                            className={`w-full text-left p-3 rounded-lg transition-all border flex items-center justify-between ${
-                                                selectedTeacherId === t.id 
-                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
+                                            className={`w-full text-left p-3 rounded-lg transition-all border flex items-center justify-between ${selectedTeacherId === t.id
+                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
                                                 : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-slate-50'
-                                            }`}
+                                                }`}
                                         >
                                             <div>
                                                 <div className="font-bold text-sm">{t.name}</div>
@@ -639,11 +639,10 @@ const ScheduleModule: React.FC = () => {
                                         <button
                                             key={c.id}
                                             onClick={() => setSelectedClassId(c.id)}
-                                            className={`w-full text-left p-3 rounded-lg transition-all border flex items-center justify-between ${
-                                                selectedClassId === c.id 
-                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' 
+                                            className={`w-full text-left p-3 rounded-lg transition-all border flex items-center justify-between ${selectedClassId === c.id
+                                                ? 'bg-indigo-600 border-indigo-600 text-white shadow-md'
                                                 : 'bg-white border-slate-200 text-slate-600 hover:border-indigo-300 hover:bg-slate-50'
-                                            }`}
+                                                }`}
                                         >
                                             <div>
                                                 <div className="font-bold text-sm">{c.name}</div>
@@ -657,11 +656,11 @@ const ScheduleModule: React.FC = () => {
                         </div>
 
                         {/* Right Area: Grid */}
-                        <div className="col-span-9 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+                        <div className="col-span-1 lg:col-span-9 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden min-h-[500px]">
                             {((mode === 'availability' && !selectedTeacherId) || (mode === 'timetable' && !selectedClassId)) ? (
                                 <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
-                                     {mode === 'availability' ? <User size={48} className="mb-4 opacity-50" /> : <School size={48} className="mb-4 opacity-50" />}
-                                     <p className="font-medium">Selecione um item à esquerda para visualizar</p>
+                                    {mode === 'availability' ? <User size={48} className="mb-4 opacity-50" /> : <School size={48} className="mb-4 opacity-50" />}
+                                    <p className="font-medium">Selecione um item à esquerda para visualizar</p>
                                 </div>
                             ) : (
                                 <div className="flex-1 flex flex-col">
@@ -669,14 +668,14 @@ const ScheduleModule: React.FC = () => {
                                     <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                                         <div>
                                             <h3 className="text-lg font-bold text-slate-800">
-                                                {mode === 'availability' 
-                                                    ? `Disponibilidade: ${teachers.find(t => t.id === selectedTeacherId)?.name}` 
+                                                {mode === 'availability'
+                                                    ? `Disponibilidade: ${teachers.find(t => t.id === selectedTeacherId)?.name}`
                                                     : `Grade Horária: ${classes.find(c => c.id === selectedClassId)?.name}`
                                                 }
                                             </h3>
                                             <p className="text-xs text-slate-500">
-                                                {mode === 'availability' 
-                                                    ? 'Clique nos horários para marcar como Indisponível (Vermelho).' 
+                                                {mode === 'availability'
+                                                    ? 'Clique nos horários para marcar como Indisponível (Vermelho).'
                                                     : 'Clique nos horários para atribuir uma disciplina.'
                                                 }
                                             </p>
@@ -724,11 +723,10 @@ const ScheduleModule: React.FC = () => {
                                                                     <button
                                                                         key={`${dayIndex}-${slotIndex}`}
                                                                         onClick={() => toggleAvailability(dayIndex, slotIndex)}
-                                                                        className={`h-24 rounded border transition-all flex items-center justify-center relative group ${
-                                                                            unavailable 
-                                                                            ? 'bg-rose-50 border-rose-200 hover:bg-rose-100' 
+                                                                        className={`h-24 rounded border transition-all flex items-center justify-center relative group ${unavailable
+                                                                            ? 'bg-rose-50 border-rose-200 hover:bg-rose-100'
                                                                             : 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
-                                                                        }`}
+                                                                            }`}
                                                                     >
                                                                         {unavailable ? (
                                                                             <div className="flex flex-col items-center text-rose-400">
@@ -751,11 +749,10 @@ const ScheduleModule: React.FC = () => {
                                                                 return (
                                                                     <div key={`${dayIndex}-${slotIndex}`} className="relative group">
                                                                         <button
-                                                                            className={`w-full h-24 rounded border transition-all p-2 flex flex-col items-start justify-start text-left ${
-                                                                                subject 
-                                                                                ? 'bg-indigo-50 border-indigo-200 hover:border-indigo-300 shadow-sm' 
+                                                                            className={`w-full h-24 rounded border transition-all p-2 flex flex-col items-start justify-start text-left ${subject
+                                                                                ? 'bg-indigo-50 border-indigo-200 hover:border-indigo-300 shadow-sm'
                                                                                 : 'bg-white border-slate-200 hover:border-indigo-300 border-dashed'
-                                                                            }`}
+                                                                                }`}
                                                                         >
                                                                             {subject ? (
                                                                                 <>
@@ -772,7 +769,7 @@ const ScheduleModule: React.FC = () => {
                                                                                 </div>
                                                                             )}
                                                                         </button>
-                                                                        
+
                                                                         {/* HOVER MENU TO SELECT SUBJECT */}
                                                                         <div className="absolute top-full left-0 z-10 w-48 bg-white border border-slate-200 shadow-xl rounded-lg overflow-hidden hidden group-hover:block max-h-48 overflow-y-auto">
                                                                             <div className="p-2 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase">Atribuir Aula</div>
@@ -789,7 +786,7 @@ const ScheduleModule: React.FC = () => {
                                                                                     </span>
                                                                                 </button>
                                                                             ))}
-                                                                             <button
+                                                                            <button
                                                                                 onClick={() => handleSetSubject(dayIndex, slotIndex, '')}
                                                                                 className="w-full text-left px-3 py-2 text-xs hover:bg-rose-50 text-rose-600 font-bold"
                                                                             >

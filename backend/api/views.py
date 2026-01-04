@@ -237,10 +237,11 @@ def _check_schedule_conflicts(school, classroom, teacher, day_of_week, time_slot
         day_of_week=day_of_week,
         time_slot=time_slot,
     )
-    if classroom:
-        conflict = conflict.exclude(classroom=classroom)
-    if conflict.exists():
-        return JsonResponse({"error": "Classroom slot already occupied"}, status=400)
+    # Conflict check for OTHER classrooms removed to allow concurrent classes
+    # if classroom:
+    #     conflict = conflict.exclude(classroom=classroom)
+    # if conflict.exists():
+    #     return JsonResponse({"error": "Classroom slot already occupied"}, status=400)
     if teacher:
         teacher_conflict = ClassScheduleEntry.objects.filter(
             classroom__school=school,
