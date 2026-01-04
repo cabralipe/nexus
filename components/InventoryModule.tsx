@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Package, Search, Plus, AlertCircle, RefreshCw, Archive, AlertTriangle, XCircle } from 'lucide-react';
+import { Package, Search, Plus, AlertCircle, RefreshCw, Archive, AlertTriangle, XCircle, Pencil, Trash2 } from 'lucide-react';
 import { InventoryItem } from '../types';
 import { backend } from '../services/backendService';
 
@@ -11,6 +11,7 @@ const InventoryModule: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
     const [newItem, setNewItem] = useState({
         name: '',
         category: 'Stationery',
@@ -43,21 +44,39 @@ const InventoryModule: React.FC = () => {
         loadInventory();
     }, []);
 
-    const handleCreateItem = async () => {
+    const handleSaveItem = async () => {
         if (!newItem.name.trim()) return;
         setLoading(true);
         setErrorMessage('');
         try {
-            const created = await backend.createInventoryItem({
-                name: newItem.name,
-                category: newItem.category,
-                quantity: newItem.quantity,
-                minQuantity: newItem.minQuantity,
-                unit: newItem.unit,
-                location: newItem.location,
-            });
-            setInventory(prev => [{ ...created, id: String(created.id) }, ...prev]);
+            if (editingId) {
+                const updated = await backend.updateInventoryItem(editingId, {
+                    name: newItem.name,
+                    category: newItem.category,
+                    quantity: newItem.quantity,
+                    minQuantity: newItem.minQuantity,
+                    unit: newItem.unit,
+                    location: newItem.location,
+                });
+                const normalized = {
+                    ...updated,
+                    id: String(updated.id),
+                    minQuantity: updated.minQuantity ?? updated.min_quantity ?? 0,
+                };
+                setInventory(prev => prev.map(item => item.id === editingId ? { ...item, ...normalized } : item));
+            } else {
+                const created = await backend.createInventoryItem({
+                    name: newItem.name,
+                    category: newItem.category,
+                    quantity: newItem.quantity,
+                    minQuantity: newItem.minQuantity,
+                    unit: newItem.unit,
+                    location: newItem.location,
+                });
+                setInventory(prev => [{ ...created, id: String(created.id) }, ...prev]);
+            }
             setShowCreateModal(false);
+            setEditingId(null);
             setNewItem({
                 name: '',
                 category: 'Stationery',
@@ -67,10 +86,34 @@ const InventoryModule: React.FC = () => {
                 location: '',
             });
         } catch (error) {
-            console.error('Failed to create inventory item', error);
-            setErrorMessage('Nao foi possivel criar o item.');
+            console.error('Failed to save inventory item', error);
+            setErrorMessage('Nao foi possivel salvar o item.');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleEdit = (item: InventoryItem) => {
+        setNewItem({
+            name: item.name,
+            category: item.category,
+            quantity: item.quantity,
+            minQuantity: item.minQuantity,
+            unit: item.unit,
+            location: item.location,
+        });
+        setEditingId(item.id);
+        setShowCreateModal(true);
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!window.confirm('Tem certeza que deseja excluir este item?')) return;
+        try {
+            await backend.deleteInventoryItem(id);
+            setInventory(prev => prev.filter(item => item.id !== id));
+        } catch (error) {
+            console.error('Failed to delete item', error);
+            setErrorMessage('Nao foi possivel excluir o item.');
         }
     };
 
@@ -117,7 +160,18 @@ const InventoryModule: React.FC = () => {
                     <p className="text-slate-500">Gestão de materiais, equipamentos e suprimentos.</p>
                 </div>
                 <button
-                    onClick={() => setShowCreateModal(true)}
+                    onClick={() => {
+                        setEditingId(null);
+                        setNewItem({
+                            name: '',
+                            category: 'Stationery',
+                            quantity: 0,
+                            minQuantity: 0,
+                            unit: '',
+                            location: '',
+                        });
+                        setShowCreateModal(true);
+                    }}
                     className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium shadow-sm"
                 >
                     <Plus size={18} /> Novo Item
@@ -141,15 +195,14 @@ const InventoryModule: React.FC = () => {
                         <h3 className="text-2xl font-bold text-slate-800">{inventory.length}</h3>
                     </div>
                 </div>
-                
+
                 {/* Clickable Low Stock Metric */}
-                <div 
+                <div
                     onClick={() => setShowLowStockOnly(!showLowStockOnly)}
-                    className={`bg-white p-6 rounded-xl shadow-sm border cursor-pointer transition-all ${
-                        showLowStockOnly 
-                            ? 'border-rose-300 ring-2 ring-rose-100 bg-rose-50' 
-                            : 'border-slate-100 hover:border-rose-200'
-                    } flex items-center gap-4 group`}
+                    className={`bg-white p-6 rounded-xl shadow-sm border cursor-pointer transition-all ${showLowStockOnly
+                        ? 'border-rose-300 ring-2 ring-rose-100 bg-rose-50'
+                        : 'border-slate-100 hover:border-rose-200'
+                        } flex items-center gap-4 group`}
                 >
                     <div className={`p-3 rounded-full transition-colors ${showLowStockOnly ? 'bg-rose-200 text-rose-700' : 'bg-rose-100 text-rose-600'}`}>
                         <AlertCircle size={24} />
@@ -188,7 +241,7 @@ const InventoryModule: React.FC = () => {
                             <p className="text-xs text-orange-700">Você possui <span className="font-bold">{lowStockCount} itens</span> abaixo do nível mínimo de segurança.</p>
                         </div>
                     </div>
-                    <button 
+                    <button
                         onClick={() => setShowLowStockOnly(true)}
                         className="text-orange-700 text-xs font-bold hover:text-orange-900 bg-orange-100 hover:bg-orange-200 px-3 py-2 rounded transition-colors"
                     >
@@ -203,15 +256,15 @@ const InventoryModule: React.FC = () => {
                     <div className="flex gap-4 items-center flex-1 w-full flex-wrap">
                         <div className="relative flex-1 max-w-md min-w-[200px]">
                             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 placeholder="Buscar material..."
                                 className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                                 value={filter}
                                 onChange={(e) => setFilter(e.target.value)}
                             />
                         </div>
-                        <select 
+                        <select
                             className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
                             value={categoryFilter}
                             onChange={(e) => setCategoryFilter(e.target.value)}
@@ -222,14 +275,13 @@ const InventoryModule: React.FC = () => {
                             <option value="Electronics">Eletrônicos</option>
                             <option value="Didactic">Didático</option>
                         </select>
-                        
+
                         <button
                             onClick={() => setShowLowStockOnly(!showLowStockOnly)}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                                showLowStockOnly 
-                                ? 'bg-rose-50 border-rose-200 text-rose-700' 
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${showLowStockOnly
+                                ? 'bg-rose-50 border-rose-200 text-rose-700'
                                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                            }`}
+                                }`}
                         >
                             <AlertCircle size={16} />
                             {showLowStockOnly ? 'Mostrando Baixo Estoque' : 'Filtrar Baixo Estoque'}
@@ -268,30 +320,42 @@ const InventoryModule: React.FC = () => {
                                         <td className="px-6 py-4 text-slate-600">{item.location}</td>
                                         <td className="px-6 py-4 text-center">
                                             <div className="flex items-center justify-center gap-3">
-                                                <button 
+                                                <button
                                                     onClick={() => handleUpdateQuantity(item.id, -1)}
                                                     className="w-6 h-6 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-600"
                                                 >-</button>
                                                 <span className={`font-bold w-8 ${isLowStock ? 'text-rose-600' : 'text-slate-800'}`}>
                                                     {item.quantity}
                                                 </span>
-                                                <button 
+                                                <button
                                                     onClick={() => handleUpdateQuantity(item.id, 1)}
                                                     className="w-6 h-6 flex items-center justify-center rounded bg-slate-100 hover:bg-slate-200 text-slate-600"
                                                 >+</button>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-center">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                                isLowStock ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
-                                            }`}>
+                                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${isLowStock ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                                                }`}>
                                                 {isLowStock ? 'Estoque Baixo' : 'Normal'}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <button className="text-indigo-600 hover:text-indigo-800 text-xs font-medium flex items-center justify-end gap-1 ml-auto">
-                                                <RefreshCw size={14} /> Atualizar
-                                            </button>
+                                            <div className="flex items-center justify-end gap-2">
+                                                <button
+                                                    onClick={() => handleEdit(item)}
+                                                    className="text-indigo-600 hover:text-indigo-800 p-1 hover:bg-indigo-50 rounded transition-colors"
+                                                    title="Editar"
+                                                >
+                                                    <Pencil size={18} />
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete(item.id)}
+                                                    className="text-rose-600 hover:text-rose-800 p-1 hover:bg-rose-50 rounded transition-colors"
+                                                    title="Excluir"
+                                                >
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 );
@@ -313,7 +377,7 @@ const InventoryModule: React.FC = () => {
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-xl p-6 w-full max-w-lg shadow-2xl">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-bold text-lg text-slate-800">Novo Item</h3>
+                            <h3 className="font-bold text-lg text-slate-800">{editingId ? 'Editar Item' : 'Novo Item'}</h3>
                             <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
                                 <XCircle size={20} />
                             </button>
@@ -389,11 +453,11 @@ const InventoryModule: React.FC = () => {
                                     Cancelar
                                 </button>
                                 <button
-                                    onClick={handleCreateItem}
+                                    onClick={handleSaveItem}
                                     className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
                                     disabled={loading || !newItem.name.trim()}
                                 >
-                                    Salvar Item
+                                    {editingId ? 'Salvar Alterações' : 'Criar Item'}
                                 </button>
                             </div>
                         </div>
