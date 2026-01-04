@@ -4141,7 +4141,12 @@ def syllabi(request):
 
     role_error = _require_roles(
         auth["user"],
-        [UserProfile.ROLE_ADMIN, UserProfile.ROLE_DIRECTOR, UserProfile.ROLE_COORDINATOR],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
     )
     if role_error:
         return role_error
@@ -4191,7 +4196,12 @@ def syllabus_detail(request, syllabus_id: int):
 
     role_error = _require_roles(
         auth["user"],
-        [UserProfile.ROLE_ADMIN, UserProfile.ROLE_DIRECTOR, UserProfile.ROLE_COORDINATOR],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
     )
     if role_error:
         return role_error
