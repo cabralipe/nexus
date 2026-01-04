@@ -8,7 +8,11 @@ import { backend } from '../services/backendService';
 type SettingsTab = 'pedagogical' | 'institution' | 'security';
 
 
-const SettingsModule: React.FC = () => {
+interface SettingsModuleProps {
+    onLogoUpdate?: (logo: string | null) => void;
+}
+
+const SettingsModule: React.FC<SettingsModuleProps> = ({ onLogoUpdate }) => {
     const [activeTab, setActiveTab] = useState<SettingsTab>('pedagogical');
     const [config, setConfig] = useState<GradingConfig>(DEFAULT_GRADING_CONFIG);
     const [saved, setSaved] = useState(false);
@@ -22,7 +26,8 @@ const SettingsModule: React.FC = () => {
         address: 'Rua da Educação, 100',
         phone: '(11) 9999-9999',
         primaryColor: '#4F46E5',
-        paymentGateway: 'Asaas'
+        paymentGateway: 'Asaas',
+        logo: '' as string | null
     });
 
     useEffect(() => {
@@ -52,6 +57,7 @@ const SettingsModule: React.FC = () => {
                         phone: school.phone || '',
                         paymentGateway: school.payment_gateway || 'Manual',
                         primaryColor: school.primary_color || '#4F46E5',
+                        logo: school.logo || null
                     }));
                 }
                 setAuditLogs(logs);
@@ -62,6 +68,25 @@ const SettingsModule: React.FC = () => {
 
         loadSettings();
     }, []);
+
+    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('entity_type', 'school_logo');
+
+        try {
+            const result = await backend.uploadFile(formData);
+            if (result && result.url) {
+                setInstData(prev => ({ ...prev, logo: result.url }));
+            }
+        } catch (error) {
+            console.error("Failed to upload logo", error);
+            alert("Erro ao fazer upload da logo.");
+        }
+    };
 
     const handleSave = async () => {
         try {
@@ -80,7 +105,12 @@ const SettingsModule: React.FC = () => {
                     address_line1: instData.address,
                     payment_gateway: instData.paymentGateway,
                     primary_color: instData.primaryColor,
+                    logo: instData.logo
                 });
+
+                if (onLogoUpdate) {
+                    onLogoUpdate(instData.logo);
+                }
             }
             setSaved(true);
             setTimeout(() => setSaved(false), 3000);
@@ -363,11 +393,25 @@ const SettingsModule: React.FC = () => {
                                 <Upload size={20} className="text-indigo-600" />
                                 Identidade Visual
                             </h3>
-                            <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors">
-                                <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mb-2">
-                                    <Building size={32} className="text-indigo-300" />
-                                </div>
-                                <span className="text-sm font-medium text-slate-600">Carregar Logo</span>
+                            <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50 transition-colors relative">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                    onChange={handleLogoUpload}
+                                />
+                                {instData.logo ? (
+                                    <div className="w-24 h-24 mb-2 relative">
+                                        <img src={instData.logo} alt="School Logo" className="w-full h-full object-contain" />
+                                    </div>
+                                ) : (
+                                    <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mb-2">
+                                        <Building size={32} className="text-indigo-300" />
+                                    </div>
+                                )}
+                                <span className="text-sm font-medium text-slate-600">
+                                    {instData.logo ? 'Alterar Logo' : 'Carregar Logo'}
+                                </span>
                                 <span className="text-xs text-slate-400">PNG ou JPG (Max 2MB)</span>
                             </div>
                             <div className="mt-6">

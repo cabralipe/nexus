@@ -10,6 +10,7 @@ interface SidebarProps {
   onLogout: () => void;
   isOpen: boolean;
   onClose: () => void;
+  logo?: string | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -19,6 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
   isOpen,
   onClose,
+  logo,
 }) => {
   const items = NAV_ITEMS.filter((item) => item.roles.includes(role));
 
@@ -37,9 +39,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }`}
       >
         <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-          <div className="bg-indigo-600 p-2 rounded-lg">
-            <GraduationCap size={24} className="text-white" />
-          </div>
+          {logo ? (
+            <img src={logo} alt="School Logo" className="w-10 h-10 object-contain bg-white rounded-lg p-1" />
+          ) : (
+            <div className="bg-indigo-600 p-2 rounded-lg">
+              <GraduationCap size={24} className="text-white" />
+            </div>
+          )}
           <div>
             <h1 className="font-bold text-lg tracking-tight">EduSaaS</h1>
             <p className="text-xs text-slate-400">School Management</p>

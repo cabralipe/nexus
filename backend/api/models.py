@@ -21,6 +21,7 @@ class School(models.Model):
     postal_code = models.CharField(max_length=20, blank=True)
     payment_gateway = models.CharField(max_length=50, blank=True, default='')
     primary_color = models.CharField(max_length=20, blank=True, default='#4F46E5')
+    logo = models.CharField(max_length=500, blank=True, null=True, help_text="URL or path to logo")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -673,12 +674,14 @@ class UploadAttachment(models.Model):
     ENTITY_JUSTIFICATION = "justification"
     ENTITY_EXAM = "exam"
     ENTITY_MESSAGE = "message"
+    ENTITY_SCHOOL_LOGO = "school_logo"
 
     ENTITY_CHOICES = [
         (ENTITY_MATERIAL, "Material"),
         (ENTITY_JUSTIFICATION, "Justificativa"),
         (ENTITY_EXAM, "Prova"),
         (ENTITY_MESSAGE, "Mensagem"),
+        (ENTITY_SCHOOL_LOGO, "Logo da Escola"),
     ]
 
     school = models.ForeignKey(School, on_delete=models.CASCADE)

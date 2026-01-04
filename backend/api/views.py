@@ -364,7 +364,12 @@ def _normalize_tuition_status(value):
     return mapping.get(normalized, value)
 
 
-def _serialize_school(school: School) -> Dict[str, Any]:
+def _serialize_school(school: School, request=None) -> Dict[str, Any]:
+    logo = school.logo
+    if request and logo and not logo.startswith("http"):
+        # If it looks like a relative path but not a full URL
+        logo = request.build_absolute_uri(logo)
+
     return {
         "id": school.id,
         "name": school.name,
@@ -378,6 +383,7 @@ def _serialize_school(school: School) -> Dict[str, Any]:
         "postal_code": school.postal_code,
         "payment_gateway": school.payment_gateway,
         "primary_color": school.primary_color,
+        "logo": logo,
         "created_at": school.created_at.isoformat(),
     }
 
@@ -779,13 +785,17 @@ def _serialize_schedule(entry: ClassScheduleEntry) -> Dict[str, Any]:
     }
 
 
-def _serialize_upload(upload: UploadAttachment) -> Dict[str, Any]:
+def _serialize_upload(upload: UploadAttachment, request=None) -> Dict[str, Any]:
+    url = upload.file.url if upload.file else ""
+    if request and url and not url.startswith("http"):
+        url = request.build_absolute_uri(url)
+    
     return {
         "id": upload.id,
         "school_id": upload.school_id,
         "entity_type": upload.entity_type,
         "entity_id": upload.entity_id,
-        "url": upload.file.url if upload.file else "",
+        "url": url,
         "original_name": upload.original_name,
         "content_type": upload.content_type,
         "size": upload.size,
@@ -1051,10 +1061,7 @@ def get_me(request):
             "email": user.email,
             "role": profile.role if profile else None,
             "student_id": profile.student_id if profile else None,
-            "school": {
-                "id": profile.school.id,
-                "name": profile.school.name,
-            }
+            "school": _serialize_school(profile.school, request)
             if profile and profile.school
             else None,
         }
@@ -1819,7 +1826,7 @@ def schools(request):
             return JsonResponse({"data": [], "pagination": {"page": 1, "page_size": 25, "total": 0, "total_pages": 0}})
         return JsonResponse(
             {
-                "data": [_serialize_school(profile.school)],
+                "data": [_serialize_school(profile.school, request)],
                 "pagination": {"page": 1, "page_size": 25, "total": 1, "total_pages": 1},
             }
         )
@@ -1856,7 +1863,7 @@ def schools(request):
     UserProfile.objects.update_or_create(
         user=auth["user"], defaults={"school": school, "role": UserProfile.ROLE_ADMIN}
     )
-    return JsonResponse({"data": _serialize_school(school)}, status=201)
+    return JsonResponse({"data": _serialize_school(school, request)}, status=201)
 
 
 @csrf_exempt
@@ -1887,6 +1894,7 @@ def school_detail(request, school_id: int):
         postal_code=payload.get("postal_code", profile.school.postal_code),
         payment_gateway=payload.get("payment_gateway", profile.school.payment_gateway),
         primary_color=payload.get("primary_color", profile.school.primary_color),
+        logo=payload.get("logo", profile.school.logo),
     )
     profile.refresh_from_db(fields=["school"])
     _log_action(
@@ -1896,7 +1904,7 @@ def school_detail(request, school_id: int):
         str(profile.school.id),
         request,
     )
-    return JsonResponse({"data": _serialize_school(profile.school)})
+    return JsonResponse({"data": _serialize_school(profile.school, request)})
 
 
 @csrf_exempt
@@ -3323,7 +3331,9 @@ def uploads(request):
             items = items.filter(entity_type=request.GET.get("entity_type"))
         if "entity_id" in request.GET:
             items = items.filter(entity_id=request.GET.get("entity_id"))
-        return JsonResponse(_paginate(request, items, _serialize_upload))
+        return JsonResponse(
+            _paginate(request, items, lambda x: _serialize_upload(x, request))
+        )
 
     role_error = _require_roles(
         auth["user"],
@@ -3340,6 +3350,11 @@ def uploads(request):
 
     entity_type = request.POST.get("entity_type")
     entity_id = request.POST.get("entity_id")
+
+    # Special case for school logo which doesn't need an ID
+    if entity_type == UploadAttachment.ENTITY_SCHOOL_LOGO and not entity_id:
+        entity_id = "school_logo"
+
     if not entity_type or not entity_id:
         return JsonResponse({"error": "Missing required fields"}, status=400)
 
@@ -3374,7 +3389,7 @@ def uploads(request):
         f"{entity_type}:{entity_id}",
         request,
     )
-    return JsonResponse({"data": _serialize_upload(upload)}, status=201)
+    return JsonResponse({"data": _serialize_upload(upload, request)}, status=201)
 
 
 @csrf_exempt

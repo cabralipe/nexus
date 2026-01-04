@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
 
   const roleMapping = useMemo(() => {
     return {
@@ -61,7 +62,7 @@ const App: React.FC = () => {
       return <CommunicationModule />;
     }
     if (currentView === ViewState.SETTINGS) {
-      return <SettingsModule />;
+      return <SettingsModule onLogoUpdate={setSchoolLogo} />;
     }
     if (currentView === ViewState.TEACHER_MONITORING) {
       return <TeacherMonitoring />;
@@ -122,12 +123,16 @@ const App: React.FC = () => {
         const normalizedRole = roleMapping[String(me.role || '').toLowerCase()] || UserRole.ADMIN;
         setUserRole(normalizedRole);
         setAuthRole(String(me.role || '').toLowerCase() || null);
+        if (me.school && me.school.logo) {
+          setSchoolLogo(me.school.logo);
+        }
         setIsAuthenticated(true);
       } catch (error) {
         localStorage.removeItem('authToken');
         localStorage.removeItem('token');
         setIsAuthenticated(false);
         setAuthRole(null);
+        setSchoolLogo(null);
       } finally {
         setAuthLoading(false);
       }
@@ -198,6 +203,7 @@ const App: React.FC = () => {
         }}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        logo={schoolLogo}
       />
 
       <div className="md:ml-64 flex-1 flex flex-col">
