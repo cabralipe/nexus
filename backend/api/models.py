@@ -19,6 +19,8 @@ class School(models.Model):
     city = models.CharField(max_length=100, blank=True)
     state = models.CharField(max_length=50, blank=True)
     postal_code = models.CharField(max_length=20, blank=True)
+    payment_gateway = models.CharField(max_length=50, blank=True, default='')
+    primary_color = models.CharField(max_length=20, blank=True, default='#4F46E5')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

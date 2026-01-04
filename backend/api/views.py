@@ -376,6 +376,8 @@ def _serialize_school(school: School) -> Dict[str, Any]:
         "city": school.city,
         "state": school.state,
         "postal_code": school.postal_code,
+        "payment_gateway": school.payment_gateway,
+        "primary_color": school.primary_color,
         "created_at": school.created_at.isoformat(),
     }
 
@@ -1883,6 +1885,8 @@ def school_detail(request, school_id: int):
         city=payload.get("city", profile.school.city),
         state=payload.get("state", profile.school.state),
         postal_code=payload.get("postal_code", profile.school.postal_code),
+        payment_gateway=payload.get("payment_gateway", profile.school.payment_gateway),
+        primary_color=payload.get("primary_color", profile.school.primary_color),
     )
     profile.refresh_from_db(fields=["school"])
     _log_action(

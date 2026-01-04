@@ -50,6 +50,8 @@ const SettingsModule: React.FC = () => {
                         cnpj: school.cnpj || '',
                         address: school.address_line1 || '',
                         phone: school.phone || '',
+                        paymentGateway: school.payment_gateway || 'Manual',
+                        primaryColor: school.primary_color || '#4F46E5',
                     }));
                 }
                 setAuditLogs(logs);
@@ -76,6 +78,8 @@ const SettingsModule: React.FC = () => {
                     cnpj: instData.cnpj,
                     phone: instData.phone,
                     address_line1: instData.address,
+                    payment_gateway: instData.paymentGateway,
+                    primary_color: instData.primaryColor,
                 });
             }
             setSaved(true);
@@ -109,19 +113,19 @@ const SettingsModule: React.FC = () => {
                     <p className="text-slate-500">Painel mestre de controle da instituição.</p>
                 </div>
                 <div className="flex bg-slate-100 p-1 rounded-lg">
-                    <button 
+                    <button
                         onClick={() => setActiveTab('pedagogical')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'pedagogical' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         <Sliders size={16} /> Pedagógico
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('institution')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'institution' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         <Building size={16} /> Instituição
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('security')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'security' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
@@ -134,7 +138,7 @@ const SettingsModule: React.FC = () => {
             {activeTab === 'pedagogical' && (
                 <div className="animate-fade-in space-y-6">
                     <div className="flex justify-end">
-                        <button 
+                        <button
                             onClick={handleSave}
                             className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
                         >
@@ -155,23 +159,23 @@ const SettingsModule: React.FC = () => {
                                     <label className="block text-sm font-medium text-slate-700 mb-2">Sistema de Divisão</label>
                                     <div className="flex gap-4">
                                         <label className={`flex-1 border rounded-lg p-3 cursor-pointer transition-colors ${config.system === 'bimestral' ? 'bg-indigo-50 border-indigo-200 ring-1 ring-indigo-500' : 'hover:bg-slate-50'}`}>
-                                            <input 
-                                                type="radio" 
-                                                name="system" 
+                                            <input
+                                                type="radio"
+                                                name="system"
                                                 className="sr-only"
                                                 checked={config.system === 'bimestral'}
-                                                onChange={() => setConfig({...config, system: 'bimestral'})}
+                                                onChange={() => setConfig({ ...config, system: 'bimestral' })}
                                             />
                                             <div className="font-semibold text-slate-800">Bimestral</div>
                                             <div className="text-xs text-slate-500">4 ciclos por ano</div>
                                         </label>
                                         <label className={`flex-1 border rounded-lg p-3 cursor-pointer transition-colors ${config.system === 'trimestral' ? 'bg-indigo-50 border-indigo-200 ring-1 ring-indigo-500' : 'hover:bg-slate-50'}`}>
-                                            <input 
-                                                type="radio" 
-                                                name="system" 
+                                            <input
+                                                type="radio"
+                                                name="system"
                                                 className="sr-only"
                                                 checked={config.system === 'trimestral'}
-                                                onChange={() => setConfig({...config, system: 'trimestral'})}
+                                                onChange={() => setConfig({ ...config, system: 'trimestral' })}
                                             />
                                             <div className="font-semibold text-slate-800">Trimestral</div>
                                             <div className="text-xs text-slate-500">3 ciclos por ano</div>
@@ -181,10 +185,10 @@ const SettingsModule: React.FC = () => {
 
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-2">Média para Aprovação</label>
-                                    <input 
-                                        type="number" 
+                                    <input
+                                        type="number"
                                         value={config.minPassingGrade}
-                                        onChange={(e) => setConfig({...config, minPassingGrade: Number(e.target.value)})}
+                                        onChange={(e) => setConfig({ ...config, minPassingGrade: Number(e.target.value) })}
                                         step="0.5" max="10" min="0"
                                         className="w-full border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
                                     />
@@ -201,9 +205,9 @@ const SettingsModule: React.FC = () => {
                             <div className="space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-2">Método de Cálculo</label>
-                                    <select 
+                                    <select
                                         value={config.calculationMethod}
-                                        onChange={(e) => setConfig({...config, calculationMethod: e.target.value as any})}
+                                        onChange={(e) => setConfig({ ...config, calculationMethod: e.target.value as any })}
                                         className="w-full border border-slate-200 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-indigo-500"
                                     >
                                         <option value="arithmetic">Média Aritmética Simples</option>
@@ -217,27 +221,27 @@ const SettingsModule: React.FC = () => {
                                         <div className="space-y-3">
                                             <div className="flex items-center gap-3">
                                                 <span className="text-sm text-slate-700 w-32">Provas</span>
-                                                <input 
-                                                    type="range" className="flex-1 accent-indigo-600" 
-                                                    value={config.weights.exam} 
+                                                <input
+                                                    type="range" className="flex-1 accent-indigo-600"
+                                                    value={config.weights.exam}
                                                     onChange={(e) => handleWeightChange('exam', Number(e.target.value))}
                                                 />
                                                 <span className="text-sm font-bold w-12 text-right">{config.weights.exam}%</span>
                                             </div>
                                             <div className="flex items-center gap-3">
                                                 <span className="text-sm text-slate-700 w-32">Trabalhos</span>
-                                                <input 
-                                                    type="range" className="flex-1 accent-indigo-600" 
-                                                    value={config.weights.activities} 
+                                                <input
+                                                    type="range" className="flex-1 accent-indigo-600"
+                                                    value={config.weights.activities}
                                                     onChange={(e) => handleWeightChange('activities', Number(e.target.value))}
                                                 />
                                                 <span className="text-sm font-bold w-12 text-right">{config.weights.activities}%</span>
                                             </div>
                                             <div className="flex items-center gap-3">
                                                 <span className="text-sm text-slate-700 w-32">Participação</span>
-                                                <input 
-                                                    type="range" className="flex-1 accent-indigo-600" 
-                                                    value={config.weights.participation} 
+                                                <input
+                                                    type="range" className="flex-1 accent-indigo-600"
+                                                    value={config.weights.participation}
                                                     onChange={(e) => handleWeightChange('participation', Number(e.target.value))}
                                                 />
                                                 <span className="text-sm font-bold w-12 text-right">{config.weights.participation}%</span>
@@ -256,7 +260,7 @@ const SettingsModule: React.FC = () => {
                                 )}
                             </div>
                         </div>
-                        
+
                         {/* Additional Settings */}
                         <div className="md:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
@@ -268,7 +272,7 @@ const SettingsModule: React.FC = () => {
                                     <label className="text-sm font-medium text-slate-700">Substituição de Nota</label>
                                     <p className="text-xs text-slate-500">Como a nota de recuperação deve ser aplicada no boletim?</p>
                                 </div>
-                                <select 
+                                <select
                                     className="w-full border border-slate-200 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-indigo-500"
                                 >
                                     <option value="replace">Substitui a menor nota do período</option>
@@ -293,46 +297,46 @@ const SettingsModule: React.FC = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="md:col-span-2">
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Nome Fantasia da Instituição</label>
-                                    <input 
+                                    <input
                                         type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                        value={instData.name} onChange={e => setInstData({...instData, name: e.target.value})}
+                                        value={instData.name} onChange={e => setInstData({ ...instData, name: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">CNPJ</label>
-                                    <input 
+                                    <input
                                         type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                        value={instData.cnpj} onChange={e => setInstData({...instData, cnpj: e.target.value})}
+                                        value={instData.cnpj} onChange={e => setInstData({ ...instData, cnpj: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Telefone Principal</label>
-                                    <input 
+                                    <input
                                         type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                        value={instData.phone} onChange={e => setInstData({...instData, phone: e.target.value})}
+                                        value={instData.phone} onChange={e => setInstData({ ...instData, phone: e.target.value })}
                                     />
                                 </div>
                                 <div className="md:col-span-2">
                                     <label className="block text-sm font-medium text-slate-700 mb-1">Endereço Completo</label>
-                                    <input 
+                                    <input
                                         type="text" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                        value={instData.address} onChange={e => setInstData({...instData, address: e.target.value})}
+                                        value={instData.address} onChange={e => setInstData({ ...instData, address: e.target.value })}
                                     />
                                 </div>
                             </div>
                         </div>
 
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                             <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+                            <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
                                 <CreditCard size={20} className="text-indigo-600" />
                                 Integração de Pagamento
                             </h3>
                             <div className="space-y-4">
                                 <div>
                                     <label className="block text-sm font-medium text-slate-700 mb-2">Gateway de Pagamento Ativo</label>
-                                    <select 
+                                    <select
                                         className="w-full border border-slate-300 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-indigo-500"
-                                        value={instData.paymentGateway} onChange={e => setInstData({...instData, paymentGateway: e.target.value})}
+                                        value={instData.paymentGateway} onChange={e => setInstData({ ...instData, paymentGateway: e.target.value })}
                                     >
                                         <option value="Asaas">Asaas</option>
                                         <option value="Stripe">Stripe</option>
@@ -369,10 +373,10 @@ const SettingsModule: React.FC = () => {
                             <div className="mt-6">
                                 <label className="block text-sm font-medium text-slate-700 mb-2">Cor Principal</label>
                                 <div className="flex items-center gap-3">
-                                    <input 
-                                        type="color" 
+                                    <input
+                                        type="color"
                                         value={instData.primaryColor}
-                                        onChange={(e) => setInstData({...instData, primaryColor: e.target.value})}
+                                        onChange={(e) => setInstData({ ...instData, primaryColor: e.target.value })}
                                         className="h-10 w-10 p-1 rounded cursor-pointer border border-slate-200"
                                     />
                                     <span className="text-sm text-slate-600 bg-slate-100 px-3 py-2 rounded-lg font-mono">{instData.primaryColor}</span>
@@ -380,7 +384,7 @@ const SettingsModule: React.FC = () => {
                             </div>
                         </div>
 
-                         <button 
+                        <button
                             onClick={handleSave}
                             className="w-full flex items-center justify-center gap-2 bg-slate-800 text-white py-3 rounded-lg hover:bg-slate-900 transition-colors shadow-md"
                         >
@@ -401,7 +405,7 @@ const SettingsModule: React.FC = () => {
                                 Logs de Auditoria
                             </h3>
                             <div className="flex gap-2">
-                                <button 
+                                <button
                                     onClick={handleExportLogs}
                                     className="px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200"
                                 >
@@ -430,11 +434,10 @@ const SettingsModule: React.FC = () => {
                                             <td className="px-6 py-4 text-slate-600 font-mono text-xs">{log.created_at || log.date}</td>
                                             <td className="px-6 py-4 font-bold text-slate-700">{log.user}</td>
                                             <td className="px-6 py-4">
-                                                <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                                    log.action.includes('deleted') ? 'bg-rose-100 text-rose-700' :
+                                                <span className={`px-2 py-1 rounded text-xs font-bold ${log.action.includes('deleted') ? 'bg-rose-100 text-rose-700' :
                                                     log.action.includes('updated') ? 'bg-yellow-100 text-yellow-700' :
-                                                    'bg-blue-100 text-blue-700'
-                                                }`}>
+                                                        'bg-blue-100 text-blue-700'
+                                                    }`}>
                                                     {log.action}
                                                 </span>
                                             </td>
