@@ -429,6 +429,7 @@ class ClassDiaryEntry(models.Model):
 class LearningMaterial(models.Model):
     classroom = models.ForeignKey(Classroom, on_delete=models.CASCADE)
     title = models.CharField(max_length=200)
+    subject = models.CharField(max_length=120, blank=True)
     material_type = models.CharField(max_length=50, blank=True)
     date = models.DateField()
     size = models.CharField(max_length=30, blank=True)

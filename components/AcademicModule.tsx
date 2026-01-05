@@ -21,7 +21,10 @@ const AcademicModule: React.FC = () => {
     const [attendanceState, setAttendanceState] = useState<Record<string, string>>({});
     const [classes, setClasses] = useState<SchoolClass[]>([]);
     const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+    const [selectedSubject, setSelectedSubject] = useState('');
     const [students, setStudents] = useState<StudentProfile[]>([]);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
     // Grade State
     const [gradesData, setGradesData] = useState<GradeRecord[]>([]);
@@ -49,11 +52,25 @@ const AcademicModule: React.FC = () => {
     useEffect(() => {
         const loadInitial = async () => {
             try {
-                const [classesData, studentsData, syllabiData] = await Promise.all([
+                const [me, classesData, studentsData, syllabiData] = await Promise.all([
+                    backend.fetchMe(),
                     backend.fetchClassrooms(),
                     backend.fetchStudents(),
                     backend.fetchSyllabi(),
                 ]);
+                const normalizedRole = String(me.role || '').toLowerCase();
+                setCurrentUserId(String(me.id));
+                setCurrentUserRole(normalizedRole || null);
+
+                const allocationsByClass = await Promise.all(
+                    classesData.map(async (item: any) => {
+                        const allocations = await backend.fetchAllocations(String(item.id));
+                        return { id: String(item.id), allocations };
+                    })
+                );
+                const allocationsMap = new Map(
+                    allocationsByClass.map(({ id, allocations }) => [id, allocations])
+                );
                 const classesList: SchoolClass[] = classesData.map((cls: any) => ({
                     id: String(cls.id),
                     name: cls.name,
@@ -62,7 +79,10 @@ const AcademicModule: React.FC = () => {
                     academicYear: cls.academicYear || cls.year,
                     capacity: cls.capacity || 30,
                     enrolledStudentIds: [],
-                    teacherAllocations: [],
+                    teacherAllocations: (allocationsMap.get(String(cls.id)) || []).map((alloc: any) => ({
+                        subject: alloc.subject,
+                        teacherId: String(alloc.teacher_id),
+                    })),
                 }));
                 setClasses(classesList);
                 setSelectedClassId(classesList[0]?.id || null);
@@ -106,15 +126,52 @@ const AcademicModule: React.FC = () => {
         loadInitial();
     }, []);
 
+    const selectedClass = classes.find(c => c.id === selectedClassId);
+
+    const availableSubjects = React.useMemo(() => {
+        if (!selectedClass) return [];
+        const allocations = selectedClass.teacherAllocations || [];
+        const filtered = currentUserRole === 'teacher' && currentUserId
+            ? allocations.filter((alloc) => alloc.teacherId === currentUserId)
+            : allocations;
+        return Array.from(new Set(filtered.map((alloc) => alloc.subject))).filter(Boolean);
+    }, [selectedClass, currentUserId, currentUserRole]);
+
+    useEffect(() => {
+        if (!selectedClassId) {
+            setSelectedSubject('');
+            return;
+        }
+        if (availableSubjects.length === 0) {
+            setSelectedSubject('');
+            return;
+        }
+        if (!availableSubjects.includes(selectedSubject)) {
+            setSelectedSubject(availableSubjects[0]);
+        }
+    }, [availableSubjects, selectedClassId, selectedSubject]);
+
     useEffect(() => {
         if (!selectedClassId) return;
         const loadClassData = async () => {
             try {
+                const gradeParams: Record<string, string> = { classroom_id: selectedClassId };
+                const attendanceParams: Record<string, string> = { classroom_id: selectedClassId, date: attendanceDate };
+                const diaryParams: Record<string, string> = { classroom_id: selectedClassId };
+                if (selectedSubject) {
+                    gradeParams.subject = selectedSubject;
+                    attendanceParams.subject = selectedSubject;
+                    diaryParams.subject = selectedSubject;
+                }
+                const materialsParams: Record<string, string> = { classroom_id: selectedClassId };
+                if (selectedSubject) {
+                    materialsParams.subject = selectedSubject;
+                }
                 const [grades, attendance, diary, materialsList] = await Promise.all([
-                    backend.fetchGrades({ classroom_id: selectedClassId }),
-                    backend.fetchAttendance({ classroom_id: selectedClassId, date: attendanceDate }),
-                    backend.fetchDiaryEntries({ classroom_id: selectedClassId }),
-                    backend.fetchMaterials({ classroom_id: selectedClassId }),
+                    backend.fetchGrades(gradeParams),
+                    backend.fetchAttendance(attendanceParams),
+                    backend.fetchDiaryEntries(diaryParams),
+                    backend.fetchMaterials(materialsParams),
                 ]);
 
                 const studentMap = new Map(students.map(s => [s.id, s.name]));
@@ -155,6 +212,7 @@ const AcademicModule: React.FC = () => {
                     materialsList.map((item: any) => ({
                         id: String(item.id),
                         title: item.title,
+                        subject: item.subject,
                         type: item.type || 'PDF',
                         date: item.date,
                         size: item.size,
@@ -167,7 +225,7 @@ const AcademicModule: React.FC = () => {
         };
 
         loadClassData();
-    }, [selectedClassId, attendanceDate, students]);
+    }, [selectedClassId, attendanceDate, selectedSubject, students]);
 
     // --- Grades Logic ---
     const handleGradeChange = (id: string, field: 'grade1' | 'grade2', value: string) => {
@@ -193,12 +251,16 @@ const AcademicModule: React.FC = () => {
 
     const handleSaveGrades = async () => {
         if (!selectedClassId) return;
+        if (!selectedSubject) {
+            alert('Selecione a disciplina antes de salvar as notas.');
+            return;
+        }
         setIsSavingGrades(true);
         try {
             const payloads = gradesData.map((record: any) => ({
                 student_id: record.studentId,
                 classroom_id: record.classroomId || selectedClassId,
-                subject: record.subject,
+                subject: selectedSubject,
                 grade1: record.grade1,
                 grade2: record.grade2,
                 recovery_grade: record.recoveryGrade,
@@ -228,12 +290,17 @@ const AcademicModule: React.FC = () => {
     // --- Attendance Logic ---
     const toggleAttendance = async (studentId: string, status: 'present' | 'absent') => {
         if (!selectedClassId) return;
+        if (!selectedSubject) {
+            alert('Selecione a disciplina antes de registrar a frequência.');
+            return;
+        }
         try {
             await backend.upsertAttendance({
                 student_id: studentId,
                 classroom_id: selectedClassId,
                 date: attendanceDate,
-                status
+                status,
+                subject: selectedSubject,
             });
             setAttendanceState(prev => ({
                 ...prev,
@@ -282,6 +349,10 @@ const AcademicModule: React.FC = () => {
             return;
         }
 
+        if (!selectedSubject) {
+            alert('Selecione a disciplina antes de registrar a aula.');
+            return;
+        }
         if (!selectedClassId) return;
 
         try {
@@ -301,7 +372,7 @@ const AcademicModule: React.FC = () => {
             } else {
                 const created = await backend.createDiaryEntry({
                     classroom_id: selectedClassId,
-                    subject: 'Matemática',
+                    subject: selectedSubject,
                     date: newEntry.date,
                     topic: newEntry.topic,
                     description: newEntry.description,
@@ -330,10 +401,15 @@ const AcademicModule: React.FC = () => {
 
     const handleAddMaterial = async () => {
         if (!newMaterialTitle || !selectedClassId) return;
+        if (!selectedSubject) {
+            alert('Selecione a disciplina antes de adicionar materiais.');
+            return;
+        }
         try {
             const created = await backend.createMaterial({
                 classroom_id: selectedClassId,
                 title: newMaterialTitle,
+                subject: selectedSubject,
                 type: 'PDF',
                 date: new Date().toISOString().split('T')[0],
                 size: '0.5 MB',
@@ -354,6 +430,7 @@ const AcademicModule: React.FC = () => {
                 {
                     id: String(created.id),
                     title: created.title,
+                    subject: created.subject,
                     type: created.type,
                     date: created.date,
                     size: created.size,
@@ -414,6 +491,19 @@ const AcademicModule: React.FC = () => {
                         {classes.map((cls) => (
                             <option key={cls.id} value={cls.id}>
                                 {cls.name}
+                            </option>
+                        ))}
+                    </select>
+                    <select
+                        className="bg-white border border-slate-200 text-slate-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500 disabled:bg-slate-50"
+                        value={selectedSubject}
+                        onChange={(e) => setSelectedSubject(e.target.value)}
+                        disabled={availableSubjects.length === 0}
+                    >
+                        <option value="">Selecione a disciplina</option>
+                        {availableSubjects.map((subject) => (
+                            <option key={subject} value={subject}>
+                                {subject}
                             </option>
                         ))}
                     </select>

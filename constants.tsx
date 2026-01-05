@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Wallet, BookOpen, Settings, Users, MessageCircle, Activity, ClipboardCheck, GraduationCap, Package, UserPlus, Grid, CalendarClock } from 'lucide-react';
+import { LayoutDashboard, Wallet, BookOpen, Settings, Users, MessageCircle, Activity, ClipboardCheck, GraduationCap, Package, UserPlus, Grid, CalendarClock, BookUser } from 'lucide-react';
 import { UserRole, ViewState, GradingConfig, InventoryItem, StudentProfile, Staff, SchoolClass } from './types';
 
 export const MOCK_STUDENTS = [
@@ -181,6 +181,12 @@ export const NAV_ITEMS = [
     id: ViewState.CLASS_ALLOCATION,
     label: 'Enturmação',
     icon: <Grid size={20} />,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: ViewState.TEACHER_SUBJECTS,
+    label: 'Disciplinas por Prof.',
+    icon: <BookUser size={20} />,
     roles: [UserRole.ADMIN],
   },
   {

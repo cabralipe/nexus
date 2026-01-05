@@ -604,6 +604,7 @@ def _serialize_material(material: LearningMaterial) -> Dict[str, Any]:
         "id": material.id,
         "classroom_id": material.classroom_id,
         "title": material.title,
+        "subject": material.subject,
         "type": material.material_type,
         "date": material.date.isoformat(),
         "size": material.size,
@@ -4028,6 +4029,8 @@ def materials(request):
         items = LearningMaterial.objects.filter(classroom__school=school)
         if "classroom_id" in request.GET:
             items = items.filter(classroom_id=request.GET.get("classroom_id"))
+        if "subject" in request.GET:
+            items = items.filter(subject__icontains=request.GET.get("subject"))
         if "type" in request.GET:
             items = items.filter(material_type__icontains=request.GET.get("type"))
         if "title" in request.GET:
@@ -4062,6 +4065,7 @@ def materials(request):
     material = LearningMaterial.objects.create(
         classroom=classroom,
         title=payload.get("title", ""),
+        subject=payload.get("subject", ""),
         material_type=payload.get("type", ""),
         date=date_value,
         size=payload.get("size", ""),
@@ -4117,6 +4121,8 @@ def material_detail(request, material_id: int):
     payload = _parse_json(request)
     if "title" in payload:
         material.title = payload.get("title", "")
+    if "subject" in payload:
+        material.subject = payload.get("subject", "")
     if "type" in payload:
         material.material_type = payload.get("type", "")
     if "date" in payload:

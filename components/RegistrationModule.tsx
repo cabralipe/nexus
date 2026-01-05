@@ -84,6 +84,7 @@ const RegistrationModule: React.FC = () => {
     const [enrollmentCode, setEnrollmentCode] = useState('');
     const [studentEmail, setStudentEmail] = useState('');
     const [studentPassword, setStudentPassword] = useState('');
+    const [staffPassword, setStaffPassword] = useState('');
 
     // Temporary state for text inputs that will be arrays (allergies/meds)
     const [allergiesInput, setAllergiesInput] = useState('');
@@ -200,6 +201,7 @@ const RegistrationModule: React.FC = () => {
             setIsCreatingStaff(true);
             setSelectedStaffId(null);
             setStaffFormData(INITIAL_STAFF_STATE);
+            setStaffPassword('');
         }
     };
 
@@ -207,6 +209,7 @@ const RegistrationModule: React.FC = () => {
         setIsCreatingStudent(false);
         setIsCreatingClass(false);
         setIsCreatingStaff(false);
+        setStaffPassword('');
     };
 
     const handleEditStudent = () => {
@@ -254,6 +257,7 @@ const RegistrationModule: React.FC = () => {
         setStaffFormData({
             ...selectedStaffMember,
         });
+        setStaffPassword('');
         setIsCreatingStaff(true);
     };
 
@@ -384,8 +388,16 @@ const RegistrationModule: React.FC = () => {
     };
 
     const handleSaveStaff = async () => {
-        if (!staffFormData.name || !staffFormData.role) {
-            alert('Nome e Cargo são obrigatórios');
+        if (!staffFormData.name || !staffFormData.role || !staffFormData.email) {
+            alert('Nome, Cargo e Email são obrigatórios');
+            return;
+        }
+        if (!selectedStaffId && !staffPassword) {
+            alert('Informe a senha para criar o usuario do funcionario.');
+            return;
+        }
+        if (staffPassword && staffPassword.length < 8) {
+            alert('A senha precisa ter pelo menos 8 caracteres.');
             return;
         }
         const newStaff: Staff = {
@@ -400,6 +412,8 @@ const RegistrationModule: React.FC = () => {
                 phone: newStaff.phone,
                 email: newStaff.email,
                 admission_date: newStaff.admissionDate,
+                ...(staffPassword ? { password: staffPassword } : {}),
+                ...(!selectedStaffId && staffPassword ? { auto_password: false } : {}),
             };
 
             if (selectedStaffId) {
@@ -423,6 +437,7 @@ const RegistrationModule: React.FC = () => {
                 setIsCreatingStaff(false);
                 setSelectedStaffId(createdStaff.id);
             }
+            setStaffPassword('');
         } catch (error) {
             console.error("Failed to save staff", error);
         }
@@ -1067,6 +1082,15 @@ const RegistrationModule: React.FC = () => {
                                     <input
                                         type="email" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                                         value={staffFormData.email} onChange={e => setStaffFormData({ ...staffFormData, email: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">
+                                        {selectedStaffId ? 'Nova Senha (opcional)' : 'Senha Inicial'}
+                                    </label>
+                                    <input
+                                        type="password" className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                        value={staffPassword} onChange={e => setStaffPassword(e.target.value)}
                                     />
                                 </div>
                                 <div>

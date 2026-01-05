@@ -13,6 +13,7 @@ import PedagogicalCoordination from './components/PedagogicalCoordination';
 import InventoryModule from './components/InventoryModule';
 import RegistrationModule from './components/RegistrationModule';
 import ClassAllocationModule from './components/ClassAllocationModule';
+import TeacherSubjectsModule from './components/TeacherSubjectsModule';
 import ScheduleModule from './components/ScheduleModule';
 import LoginScreen from './components/LoginScreen';
 import { UserRole, ViewState } from './types';
@@ -81,6 +82,9 @@ const App: React.FC = () => {
     }
     if (currentView === ViewState.CLASS_ALLOCATION) {
       return <ClassAllocationModule />;
+    }
+    if (currentView === ViewState.TEACHER_SUBJECTS) {
+      return <TeacherSubjectsModule />;
     }
     if (currentView === ViewState.SCHEDULE) {
       return <ScheduleModule />;
