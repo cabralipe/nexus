@@ -1,25 +1,24 @@
 import os
 from typing import Optional
 
-import google.generativeai as genai
+from google import genai
 
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
-
-def _build_model(system_instruction: Optional[str] = None) -> genai.GenerativeModel:
+def _build_client() -> genai.Client:
     api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is not set")
-    genai.configure(api_key=api_key)
-    if system_instruction:
-        return genai.GenerativeModel(
-            model_name=DEFAULT_MODEL,
-            system_instruction=system_instruction,
-        )
-    return genai.GenerativeModel(model_name=DEFAULT_MODEL)
+    if api_key:
+        return genai.Client(api_key=api_key)
+    return genai.Client()
 
 
 def generate_text(prompt: str, system_instruction: Optional[str] = None) -> str:
-    model = _build_model(system_instruction=system_instruction)
-    response = model.generate_content(prompt)
+    if not os.getenv("GEMINI_API_KEY"):
+        raise RuntimeError("GEMINI_API_KEY is not set")
+    client = _build_client()
+    full_prompt = f"{system_instruction}\n\n{prompt}" if system_instruction else prompt
+    response = client.models.generate_content(
+        model=DEFAULT_MODEL,
+        contents=full_prompt,
+    )
     return getattr(response, "text", "") or ""

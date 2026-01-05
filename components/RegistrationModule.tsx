@@ -443,6 +443,27 @@ const RegistrationModule: React.FC = () => {
         }
     };
 
+    const handleUpdateStaffPassword = async () => {
+        if (!selectedStaffId) return;
+        if (!staffPassword) {
+            alert('Informe a nova senha.');
+            return;
+        }
+        if (staffPassword.length < 8) {
+            alert('A senha precisa ter pelo menos 8 caracteres.');
+            return;
+        }
+        try {
+            await backend.updateStaff(selectedStaffId, {
+                password: staffPassword,
+                auto_password: false,
+            });
+            setStaffPassword('');
+        } catch (error) {
+            console.error("Failed to update staff password", error);
+        }
+    };
+
     const handleDeleteStudent = async (id: string) => {
         if (!confirm('Tem certeza que deseja remover este aluno?')) return;
         try {
@@ -509,6 +530,7 @@ const RegistrationModule: React.FC = () => {
         setIsCreatingStudent(false);
         setIsCreatingClass(false);
         setIsCreatingStaff(false);
+        setStaffPassword('');
     };
 
     return (
@@ -582,7 +604,11 @@ const RegistrationModule: React.FC = () => {
                         {activeTab === 'staff' && filteredStaff.map(s => (
                             <button
                                 key={s.id}
-                                onClick={() => setSelectedStaffId(s.id)}
+                                onClick={() => {
+                                    setSelectedStaffId(s.id);
+                                    setIsCreatingStaff(false);
+                                    setStaffPassword('');
+                                }}
                                 className={`w-full text-left p-3 rounded-lg transition-colors flex items-center gap-3 ${selectedStaffId === s.id ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-slate-50 border border-transparent'}`}
                             >
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${selectedStaffId === s.id ? 'bg-indigo-200 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
@@ -1137,6 +1163,28 @@ const RegistrationModule: React.FC = () => {
                                     >
                                         <Trash2 size={20} />
                                     </button>
+                                </div>
+                            </div>
+                            <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+                                <h4 className="text-sm font-semibold text-slate-700 mb-3">Credenciais de Acesso</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-1">Nova Senha</label>
+                                        <input
+                                            type="password"
+                                            className="w-full border border-slate-300 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                            value={staffPassword}
+                                            onChange={e => setStaffPassword(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="flex">
+                                        <button
+                                            onClick={handleUpdateStaffPassword}
+                                            className="w-full md:w-auto px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+                                        >
+                                            Salvar Senha
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>

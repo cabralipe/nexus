@@ -16,9 +16,11 @@ const PedagogicalCoordination: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
     const [examFile, setExamFile] = useState<File | null>(null);
+    const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
     
     // Mock upload state
     const [uploadData, setUploadData] = useState({ title: '', subject: '', type: 'Standard', studentName: '' });
+    const isTeacher = currentUserRole === 'teacher';
 
     // Handlers
     const handleAddTarget = async () => {
@@ -100,12 +102,21 @@ const PedagogicalCoordination: React.FC = () => {
             setLoading(true);
             setErrorMessage('');
             try {
-                const [targetsData, examsData] = await Promise.all([
-                    backend.fetchAcademicTargets(),
-                    backend.fetchExamSubmissions(),
-                ]);
-                setTargets(targetsData.map((item: any) => ({ ...item, id: String(item.id) })));
-                setExams(examsData.map((item: any) => ({ ...item, id: String(item.id) })));
+                const me = await backend.fetchMe();
+                const normalizedRole = String(me.role || '').toLowerCase() || null;
+                setCurrentUserRole(normalizedRole);
+                if (normalizedRole === 'teacher') {
+                    const examsData = await backend.fetchExamSubmissions();
+                    setTargets([]);
+                    setExams(examsData.map((item: any) => ({ ...item, id: String(item.id) })));
+                } else {
+                    const [targetsData, examsData] = await Promise.all([
+                        backend.fetchAcademicTargets(),
+                        backend.fetchExamSubmissions(),
+                    ]);
+                    setTargets(targetsData.map((item: any) => ({ ...item, id: String(item.id) })));
+                    setExams(examsData.map((item: any) => ({ ...item, id: String(item.id) })));
+                }
             } catch (error) {
                 console.error('Failed to load coordination data', error);
                 setErrorMessage('Nao foi possivel carregar os dados da coordenacao.');
@@ -121,8 +132,14 @@ const PedagogicalCoordination: React.FC = () => {
         <div className="space-y-8">
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800">Coordenação Pedagógica</h2>
-                    <p className="text-slate-500">Gestão de calendário acadêmico e aprovação de avaliações.</p>
+                    <h2 className="text-2xl font-bold text-slate-800">
+                        {isTeacher ? 'Envio de Provas' : 'Coordenação Pedagógica'}
+                    </h2>
+                    <p className="text-slate-500">
+                        {isTeacher
+                            ? 'Envie provas para análise e acompanhe o status.'
+                            : 'Gestão de calendário acadêmico e aprovação de avaliações.'}
+                    </p>
                 </div>
                 <button 
                     onClick={() => {
@@ -132,7 +149,7 @@ const PedagogicalCoordination: React.FC = () => {
                     className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
                 >
                     <Upload size={18} />
-                    Enviar Prova (Professor)
+                    {isTeacher ? 'Enviar Prova' : 'Enviar Prova (Professor)'}
                 </button>
             </div>
 
@@ -142,8 +159,8 @@ const PedagogicalCoordination: React.FC = () => {
                 </div>
             )}
 
-            {/* Section 1: Academic Calendar Targets */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+            {!isTeacher && (
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
                 <h3 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
                     <Calendar size={20} className="text-indigo-600" />
                     Metas Mensais e Prazos
@@ -224,6 +241,7 @@ const PedagogicalCoordination: React.FC = () => {
                     </table>
                 </div>
             </div>
+            )}
 
             {/* Section 2: Exam Approval Workflow */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -232,7 +250,7 @@ const PedagogicalCoordination: React.FC = () => {
                     <div className="p-6 border-b border-slate-100">
                         <h3 className="font-bold text-slate-800 flex items-center gap-2">
                             <FileText size={20} className="text-indigo-600" />
-                            Banco de Avaliações
+                            {isTeacher ? 'Minhas Avaliações' : 'Banco de Avaliações'}
                         </h3>
                     </div>
                     <div className="divide-y divide-slate-100">
@@ -277,7 +295,7 @@ const PedagogicalCoordination: React.FC = () => {
                                             onClick={() => setSelectedExamId(exam.id)}
                                             className="text-indigo-600 hover:text-indigo-800 text-xs font-medium underline"
                                         >
-                                            Analisar
+                                            {isTeacher ? 'Ver status' : 'Analisar'}
                                         </button>
                                     </div>
                                 </div>
@@ -290,13 +308,17 @@ const PedagogicalCoordination: React.FC = () => {
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 h-fit">
                     <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                         <MessageSquare size={20} className="text-indigo-600" />
-                        Parecer da Direção
+                        {isTeacher ? 'Status da Avaliação' : 'Parecer da Direção'}
                     </h3>
                     
                     {!selectedExam ? (
                         <div className="text-center py-12 text-slate-400">
                             <FileText size={48} className="mx-auto mb-3 opacity-20" />
-                            <p className="text-sm">Selecione uma prova para visualizar e emitir parecer.</p>
+                            <p className="text-sm">
+                                {isTeacher
+                                    ? 'Selecione uma prova para visualizar o status.'
+                                    : 'Selecione uma prova para visualizar e emitir parecer.'}
+                            </p>
                         </div>
                     ) : (
                         <div className="animate-fade-in space-y-4">
@@ -333,28 +355,32 @@ const PedagogicalCoordination: React.FC = () => {
                                 )}
                             </div>
 
-                            <textarea 
-                                className="w-full h-32 border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                                placeholder="Digite seu parecer pedagógico aqui..."
-                                value={feedbackText}
-                                onChange={(e) => setFeedbackText(e.target.value)}
-                            />
+                            {!isTeacher && (
+                                <>
+                                    <textarea 
+                                        className="w-full h-32 border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+                                        placeholder="Digite seu parecer pedagógico aqui..."
+                                        value={feedbackText}
+                                        onChange={(e) => setFeedbackText(e.target.value)}
+                                    />
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <button 
-                                    onClick={() => handleUpdateStatus('ChangesRequested')}
-                                    disabled={!feedbackText}
-                                    className="bg-rose-100 text-rose-700 py-2 rounded-lg text-sm font-medium hover:bg-rose-200 disabled:opacity-50"
-                                >
-                                    Solicitar Ajustes
-                                </button>
-                                <button 
-                                    onClick={() => handleUpdateStatus('Approved')}
-                                    className="bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-700"
-                                >
-                                    Aprovar Prova
-                                </button>
-                            </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button 
+                                            onClick={() => handleUpdateStatus('ChangesRequested')}
+                                            disabled={!feedbackText}
+                                            className="bg-rose-100 text-rose-700 py-2 rounded-lg text-sm font-medium hover:bg-rose-200 disabled:opacity-50"
+                                        >
+                                            Solicitar Ajustes
+                                        </button>
+                                        <button 
+                                            onClick={() => handleUpdateStatus('Approved')}
+                                            className="bg-emerald-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-700"
+                                        >
+                                            Aprovar Prova
+                                        </button>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
                 </div>

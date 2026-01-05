@@ -314,6 +314,13 @@ export const backend = {
     );
     return withPagination(data);
   },
+  async createSyllabus(payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>("/syllabi/", {
+      method: "POST",
+      body: payload,
+    });
+    return data.data;
+  },
   async updateSyllabus(id: string, payload: Record<string, unknown>) {
     const data = await requestJson<{ data: any }>(`/syllabi/${id}/`, {
       method: "PATCH",

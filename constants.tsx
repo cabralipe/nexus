@@ -206,7 +206,7 @@ export const NAV_ITEMS = [
     id: ViewState.PEDAGOGICAL,
     label: 'Coordenação',
     icon: <GraduationCap size={20} />,
-    roles: [UserRole.ADMIN],
+    roles: [UserRole.ADMIN, UserRole.TEACHER],
   },
   {
     id: ViewState.FINANCIAL,

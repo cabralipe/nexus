@@ -10,10 +10,26 @@ type Tab = 'grades' | 'attendance' | 'diary' | 'materials' | 'syllabus';
 interface Syllabus {
     id: string;
     subject: string;
+    gradeLevel: string;
     description: string;
     objectives: string[];
     bibliography: string;
 }
+
+const getDefaultTerm = (system: GradingConfig['system'], referenceDate = new Date()): string => {
+    const month = referenceDate.getMonth() + 1;
+    if (system === 'trimestral') {
+        if (month <= 3) return '1';
+        if (month <= 6) return '2';
+        if (month <= 9) return '3';
+        return '3';
+    }
+    if (month <= 2) return '1';
+    if (month <= 4) return '2';
+    if (month <= 6) return '3';
+    if (month <= 8) return '4';
+    return '4';
+};
 
 const AcademicModule: React.FC = () => {
     const [activeTab, setActiveTab] = useState<Tab>('grades');
@@ -28,6 +44,7 @@ const AcademicModule: React.FC = () => {
     const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
     const [currentStudentId, setCurrentStudentId] = useState<string | null>(null);
     const [gradingConfig, setGradingConfig] = useState<GradingConfig>(DEFAULT_GRADING_CONFIG);
+    const [selectedTerm, setSelectedTerm] = useState<string>('');
 
     // Grade State
     const [gradesData, setGradesData] = useState<GradeRecord[]>([]);
@@ -50,6 +67,7 @@ const AcademicModule: React.FC = () => {
     const [syllabi, setSyllabi] = useState<Syllabus[]>([]);
     const [selectedSyllabusId, setSelectedSyllabusId] = useState<string>('');
     const [isEditingSyllabus, setIsEditingSyllabus] = useState(false);
+    const [isCreatingSyllabus, setIsCreatingSyllabus] = useState(false);
     const [syllabusFormData, setSyllabusFormData] = useState<Syllabus | null>(null);
 
     useEffect(() => {
@@ -132,6 +150,7 @@ const AcademicModule: React.FC = () => {
                 const syllabiList = syllabiData.map((item: any) => ({
                     id: String(item.id),
                     subject: item.subject,
+                    gradeLevel: item.grade_level || item.gradeLevel || '',
                     description: item.description || '',
                     objectives: item.objectives || [],
                     bibliography: item.bibliography || '',
@@ -158,6 +177,17 @@ const AcademicModule: React.FC = () => {
 
         loadInitial();
     }, []);
+
+    useEffect(() => {
+        const maxTerm = gradingConfig.system === 'trimestral' ? 3 : 4;
+        if (!selectedTerm) {
+            setSelectedTerm(getDefaultTerm(gradingConfig.system));
+            return;
+        }
+        if (Number(selectedTerm) > maxTerm) {
+            setSelectedTerm(String(maxTerm));
+        }
+    }, [gradingConfig.system, selectedTerm]);
 
     const visibleClasses = React.useMemo(() => {
         if (currentUserRole === 'teacher' && currentUserId) {
@@ -211,6 +241,9 @@ const AcademicModule: React.FC = () => {
                 const gradeParams: Record<string, string> = { classroom_id: selectedClassId };
                 const attendanceParams: Record<string, string> = { classroom_id: selectedClassId, date: attendanceDate };
                 const diaryParams: Record<string, string> = { classroom_id: selectedClassId };
+                if (selectedTerm) {
+                    gradeParams.term = selectedTerm;
+                }
                 let classStudentIds: string[] = [];
                 if (currentUserRole === 'student' && currentStudentId) {
                     classStudentIds = [currentStudentId];
@@ -256,7 +289,7 @@ const AcademicModule: React.FC = () => {
                         recoveryGrade: record?.recovery_grade ?? null,
                         average: record?.average ?? 0,
                         finalGrade: record?.final_grade ?? record?.average ?? 0,
-                        term: record?.term || '',
+                        term: record?.term || selectedTerm || '',
                         date: record?.date || '',
                         studentId: String(studentId),
                         classroomId: record?.classroom_id ? String(record.classroom_id) : selectedClassId,
@@ -300,7 +333,7 @@ const AcademicModule: React.FC = () => {
         };
 
         loadClassData();
-    }, [selectedClassId, attendanceDate, selectedSubject, students]);
+    }, [selectedClassId, attendanceDate, selectedSubject, selectedTerm, students]);
 
     const calculateAverage = (grade1: number | '' | null, grade2: number | '' | null) => {
         if (typeof grade1 !== 'number' || typeof grade2 !== 'number') return null;
@@ -386,7 +419,7 @@ const AcademicModule: React.FC = () => {
                 grade1: record.grade1,
                 grade2: record.grade2,
                 recovery_grade: gradingConfig.recoveryType === 'none' ? null : record.recoveryGrade,
-                term: record.term,
+                term: selectedTerm || record.term,
                 date: record.date || attendanceDate,
             }));
             await Promise.all(payloads.map(payload => backend.upsertGrade(payload)));
@@ -413,6 +446,14 @@ const AcademicModule: React.FC = () => {
 
     const gradingPeriodLabel = gradingConfig.system === 'trimestral' ? 'Trimestre' : 'Bimestre';
     const recoveryLabel = gradingConfig.recoveryType === 'exam' ? 'Recuperação (Prova)' : 'Recuperação (Nota)';
+    const termLabel = selectedTerm ? `${gradingPeriodLabel} ${selectedTerm}` : gradingPeriodLabel;
+    const maxTerm = gradingConfig.system === 'trimestral' ? 3 : 4;
+    const grade1Label = gradingConfig.calculationMethod === 'weighted'
+        ? `Provas (${gradingConfig.weights.exam}%)`
+        : 'Nota 1';
+    const grade2Label = gradingConfig.calculationMethod === 'weighted'
+        ? `Atividades (${gradingConfig.weights.activities}%)`
+        : 'Nota 2';
 
     // --- Attendance Logic ---
     const toggleAttendance = async (studentId: string, status: 'present' | 'absent') => {
@@ -578,15 +619,68 @@ const AcademicModule: React.FC = () => {
         if (current) {
             setSyllabusFormData({ ...current });
             setIsEditingSyllabus(true);
+            setIsCreatingSyllabus(false);
         }
+    };
+
+    const handleCreateSyllabus = () => {
+        setSyllabusFormData({
+            id: '',
+            subject: '',
+            gradeLevel: selectedClass?.gradeLevel || '',
+            description: '',
+            objectives: [],
+            bibliography: '',
+        });
+        setIsEditingSyllabus(true);
+        setIsCreatingSyllabus(true);
     };
 
     const handleSaveSyllabus = async () => {
         if (!syllabusFormData) return;
+        if (!syllabusFormData.subject.trim()) {
+            alert('Informe a disciplina da ementa.');
+            return;
+        }
         try {
-            const updated = await backend.updateSyllabus(syllabusFormData.id, syllabusFormData);
-            setSyllabi(prev => prev.map(s => s.id === syllabusFormData.id ? updated : s));
+            if (isCreatingSyllabus) {
+                const created = await backend.createSyllabus({
+                    subject: syllabusFormData.subject,
+                    grade_level: syllabusFormData.gradeLevel,
+                    description: syllabusFormData.description,
+                    objectives: syllabusFormData.objectives,
+                    bibliography: syllabusFormData.bibliography,
+                });
+                const createdSyllabus: Syllabus = {
+                    id: String(created.id),
+                    subject: created.subject,
+                    gradeLevel: created.grade_level || created.gradeLevel || '',
+                    description: created.description || '',
+                    objectives: created.objectives || [],
+                    bibliography: created.bibliography || '',
+                };
+                setSyllabi(prev => [createdSyllabus, ...prev]);
+                setSelectedSyllabusId(createdSyllabus.id);
+            } else {
+                const updated = await backend.updateSyllabus(syllabusFormData.id, {
+                    subject: syllabusFormData.subject,
+                    grade_level: syllabusFormData.gradeLevel,
+                    description: syllabusFormData.description,
+                    objectives: syllabusFormData.objectives,
+                    bibliography: syllabusFormData.bibliography,
+                });
+                const updatedSyllabus: Syllabus = {
+                    id: String(updated.id),
+                    subject: updated.subject,
+                    gradeLevel: updated.grade_level || updated.gradeLevel || '',
+                    description: updated.description || '',
+                    objectives: updated.objectives || [],
+                    bibliography: updated.bibliography || '',
+                };
+                setSyllabi(prev => prev.map(s => s.id === updatedSyllabus.id ? updatedSyllabus : s));
+            }
             setIsEditingSyllabus(false);
+            setIsCreatingSyllabus(false);
             setSyllabusFormData(null);
         } catch (error) {
             console.error("Failed to save syllabus", error);
@@ -685,8 +779,24 @@ const AcademicModule: React.FC = () => {
             {/* Tab Content: GRADES */}
             {activeTab === 'grades' && (
                 <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden animate-fade-in">
-                    <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                        <h3 className="font-bold text-slate-800">Notas do {gradingPeriodLabel}</h3>
+                    <div className="p-6 border-b border-slate-100 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-center gap-4">
+                            <h3 className="font-bold text-slate-800">Notas do {termLabel}</h3>
+                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <span className="text-xs uppercase tracking-wide text-slate-400">Período</span>
+                                <select
+                                    className="border border-slate-200 rounded-lg px-2 py-1 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={selectedTerm || '1'}
+                                    onChange={(e) => setSelectedTerm(e.target.value)}
+                                >
+                                    {Array.from({ length: maxTerm }, (_, idx) => (
+                                        <option key={idx + 1} value={String(idx + 1)}>
+                                            {gradingPeriodLabel} {idx + 1}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
                         <button
                             onClick={handleExportGrades}
                             className="flex items-center gap-2 text-indigo-600 text-sm hover:underline"
@@ -699,8 +809,8 @@ const AcademicModule: React.FC = () => {
                         <thead className="bg-slate-50 text-slate-500">
                             <tr>
                                 <th className="px-6 py-3 font-medium w-1/3">Aluno</th>
-                                <th className="px-6 py-3 font-medium text-center w-32">Prova 1</th>
-                                <th className="px-6 py-3 font-medium text-center w-32">Prova 2</th>
+                                <th className="px-6 py-3 font-medium text-center w-40">{grade1Label}</th>
+                                <th className="px-6 py-3 font-medium text-center w-40">{grade2Label}</th>
                                 {gradingConfig.recoveryType !== 'none' && (
                                     <th className="px-6 py-3 font-medium text-center w-40">{recoveryLabel}</th>
                                 )}
@@ -1135,7 +1245,7 @@ const AcademicModule: React.FC = () => {
                             {!isStudent && (
                                 <button
                                     className="w-full text-left p-3 rounded-lg text-slate-400 text-sm border-2 border-dashed border-slate-200 hover:border-indigo-300 hover:text-indigo-600 transition-all flex items-center justify-center gap-2 mt-4"
-                                    onClick={() => alert("Funcionalidade para adicionar nova disciplina em breve.")}
+                                    onClick={handleCreateSyllabus}
                                 >
                                     <Plus size={14} /> Adicionar Disciplina
                                 </button>
@@ -1156,7 +1266,11 @@ const AcademicModule: React.FC = () => {
                                         </h3>
                                         <div className="flex gap-2">
                                             <button
-                                                onClick={() => setIsEditingSyllabus(false)}
+                                                onClick={() => {
+                                                    setIsEditingSyllabus(false);
+                                                    setIsCreatingSyllabus(false);
+                                                    setSyllabusFormData(null);
+                                                }}
                                                 className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
                                             >
                                                 Cancelar
@@ -1170,6 +1284,26 @@ const AcademicModule: React.FC = () => {
                                         </div>
                                     </div>
                                     <div className="space-y-6">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-bold text-slate-700 mb-2">Disciplina</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                                    value={syllabusFormData.subject}
+                                                    onChange={e => setSyllabusFormData({ ...syllabusFormData, subject: e.target.value })}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-bold text-slate-700 mb-2">Série/Ano</label>
+                                                <input
+                                                    type="text"
+                                                    className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                                    value={syllabusFormData.gradeLevel}
+                                                    onChange={e => setSyllabusFormData({ ...syllabusFormData, gradeLevel: e.target.value })}
+                                                />
+                                            </div>
+                                        </div>
                                         <div>
                                             <label className="block text-sm font-bold text-slate-700 mb-2">Descrição da Disciplina</label>
                                             <textarea
@@ -1208,7 +1342,10 @@ const AcademicModule: React.FC = () => {
                                                 </div>
                                                 <h2 className="text-2xl font-bold text-slate-800">{activeSyllabus.subject}</h2>
                                             </div>
-                                            <p className="text-slate-500 text-sm">Plano de Ensino Anual • 9º Ano</p>
+                                            <p className="text-slate-500 text-sm">
+                                                Plano de Ensino Anual
+                                                {activeSyllabus.gradeLevel ? ` • ${activeSyllabus.gradeLevel}` : ''}
+                                            </p>
                                         </div>
                                         {!isStudent && (
                                             <button
