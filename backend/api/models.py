@@ -627,6 +627,63 @@ class ExamSubmission(models.Model):
         return self.title
 
 
+class LessonPlan(models.Model):
+    STATUS_PENDING = "Pending"
+    STATUS_APPROVED = "Approved"
+    STATUS_REJECTED = "Rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pendente"),
+        (STATUS_APPROVED, "Aprovado"),
+        (STATUS_REJECTED, "Reprovado"),
+    ]
+
+    school = models.ForeignKey(School, on_delete=models.CASCADE)
+    teacher = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lesson_plans",
+    )
+    classroom = models.ForeignKey(
+        Classroom,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lesson_plans",
+    )
+    subject = models.CharField(max_length=120)
+    grade_level = models.CharField(max_length=80, blank=True)
+    date = models.DateField()
+    duration = models.CharField(max_length=40, blank=True)
+    topic = models.CharField(max_length=200)
+    objectives = models.TextField(blank=True)
+    content_program = models.TextField(blank=True)
+    methodology = models.TextField(blank=True)
+    resources = models.TextField(blank=True)
+    activities = models.TextField(blank=True)
+    assessment = models.TextField(blank=True)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    feedback = models.TextField(blank=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    decided_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lesson_plans_decided",
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-date", "-submitted_at"]
+
+    def __str__(self) -> str:
+        return f"{self.subject} - {self.date}"
+
+
 class Notice(models.Model):
     TYPE_GENERAL = "general"
     TYPE_URGENT = "urgent"

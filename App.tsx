@@ -35,6 +35,7 @@ const App: React.FC = () => {
   const [viewAsUsers, setViewAsUsers] = useState<any[]>([]);
   const [viewAsUserId, setViewAsUserId] = useState('');
   const [viewAsLoading, setViewAsLoading] = useState(false);
+  const [pendingLessonPlansCount, setPendingLessonPlansCount] = useState(0);
 
   const roleMapping = useMemo(() => {
     return {
@@ -100,6 +101,9 @@ const App: React.FC = () => {
     }
     if (currentView === ViewState.TEACHER_MONITORING) {
       return <TeacherMonitoring />;
+    }
+    if (currentView === ViewState.LESSON_PLANS) {
+      return <AdminDashboard initialView="lessonPlans" />;
     }
     if (currentView === ViewState.ABSENCE_JUSTIFICATION) {
       return <AbsenceJustification />;
@@ -192,6 +196,22 @@ const App: React.FC = () => {
   }, [roleMapping]);
 
   useEffect(() => {
+    const loadPendingLessonPlans = async () => {
+      if (userRole !== UserRole.ADMIN) {
+        setPendingLessonPlansCount(0);
+        return;
+      }
+      try {
+        const plans = await backend.fetchLessonPlans({ status: 'Pending' });
+        setPendingLessonPlansCount(Array.isArray(plans) ? plans.length : 0);
+      } catch (error) {
+        console.error('Failed to load pending lesson plans', error);
+      }
+    };
+    loadPendingLessonPlans();
+  }, [userRole, currentView]);
+
+  useEffect(() => {
     if (authRole !== 'admin') return;
     if (viewAsRole === UserRole.ADMIN) return;
     const roleParam = viewAsRole === UserRole.TEACHER ? 'teacher' : 'student';
@@ -261,6 +281,7 @@ const App: React.FC = () => {
         role={userRole}
         currentView={currentView}
         onChangeView={setCurrentView}
+        pendingLessonPlansCount={pendingLessonPlansCount}
         onLogout={async () => {
           try {
             await backend.logout();

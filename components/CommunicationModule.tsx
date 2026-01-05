@@ -60,6 +60,22 @@ const CommunicationModule: React.FC = () => {
         setIsWriting(false);
     };
 
+    const handleUseGeneratedNotice = async () => {
+        if (!generatedNotice) return;
+        try {
+            const created = await backend.createNotice({
+                title: topic || 'Comunicado',
+                content: generatedNotice,
+                type: 'General',
+            });
+            setNotices((prev) => [{ ...created, id: String(created.id) }, ...prev]);
+            setGeneratedNotice('');
+            setTopic('');
+        } catch (error) {
+            console.error("Failed to create notice", error);
+        }
+    };
+
     const handleSendMessage = async () => {
         if (!selectedContactId || !selectedConversationId || !chatMessage) return;
         try {
@@ -205,7 +221,10 @@ const CommunicationModule: React.FC = () => {
                                     <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-700 h-64 overflow-y-auto markdown-content border border-slate-200">
                                         <div dangerouslySetInnerHTML={{__html: generatedNotice.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')}} />
                                     </div>
-                                    <button className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-lg text-sm hover:bg-indigo-700">
+                                    <button
+                                        onClick={handleUseGeneratedNotice}
+                                        className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-lg text-sm hover:bg-indigo-700"
+                                    >
                                         Usar este texto
                                     </button>
                                 </div>

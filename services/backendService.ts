@@ -446,6 +446,27 @@ export const backend = {
     });
     return data.data;
   },
+  async fetchLessonPlans(params: Record<string, string> = {}) {
+    const query = new URLSearchParams(params).toString();
+    const data = await requestJson<{ data: any[] }>(
+      `/lesson-plan-records/?page_size=200${query ? `&${query}` : ""}`
+    );
+    return withPagination(data);
+  },
+  async createLessonPlan(payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>("/lesson-plan-records/", {
+      method: "POST",
+      body: payload,
+    });
+    return data.data;
+  },
+  async updateLessonPlan(id: string, payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>(`/lesson-plan-records/${id}/`, {
+      method: "PATCH",
+      body: payload,
+    });
+    return data.data;
+  },
   async deleteExamSubmission(id: string) {
     return requestJson<{ success: boolean }>(`/exam-submissions/${id}/`, { method: "DELETE" });
   },
@@ -536,8 +557,11 @@ export const backend = {
     const data = await requestJson<{ data: any }>("/grading-config/");
     return data.data;
   },
-  async fetchTeacherActivities() {
-    return requestJson<{ summary: any; data: any[] }>("/teachers/activities/");
+  async fetchTeacherActivities(params: Record<string, string> = {}) {
+    const query = new URLSearchParams(params).toString();
+    return requestJson<{ summary: any; data: any[] }>(
+      `/teachers/activities/${query ? `?${query}` : ""}`
+    );
   },
   async fetchAdminDashboard() {
     return requestJson<{

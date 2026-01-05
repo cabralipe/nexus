@@ -105,6 +105,12 @@ urlpatterns = [
         views.exam_submission_detail,
         name="exam_submission_detail",
     ),
+    path("lesson-plan-records/", views.lesson_plan_records, name="lesson_plan_records"),
+    path(
+        "lesson-plan-records/<int:plan_id>/",
+        views.lesson_plan_detail,
+        name="lesson_plan_detail",
+    ),
     path("notices/", views.notices, name="notices"),
     path("notices/<int:notice_id>/", views.notice_detail, name="notice_detail"),
     path("conversations/", views.conversations, name="conversations"),

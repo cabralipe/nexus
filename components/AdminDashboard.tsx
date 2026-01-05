@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { DollarSign, Users, AlertTriangle, TrendingUp, Sparkles, FileText, Printer, ArrowLeft, Sliders, Calculator, Save, Settings, CheckCircle } from 'lucide-react';
 import { StatCard } from './StatCard';
@@ -9,8 +9,12 @@ import { backend } from '../services/backendService';
 
 const COLORS = ['#4F46E5', '#EF4444', '#10B981', '#F59E0B'];
 
-const AdminDashboard: React.FC = () => {
-    const [viewMode, setViewMode] = useState<'overview' | 'documents' | 'grading'>('overview');
+type AdminDashboardProps = {
+    initialView?: 'overview' | 'documents' | 'grading' | 'lessonPlans';
+};
+
+const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialView = 'overview' }) => {
+    const [viewMode, setViewMode] = useState<'overview' | 'documents' | 'grading' | 'lessonPlans'>(initialView);
     const [insight, setInsight] = useState<string>("");
     const [loadingAi, setLoadingAi] = useState(false);
     const [loadingData, setLoadingData] = useState(false);
@@ -27,6 +31,12 @@ const AdminDashboard: React.FC = () => {
     const [docDetails, setDocDetails] = useState('');
     const [generatedDoc, setGeneratedDoc] = useState('');
     const [isGeneratingDoc, setIsGeneratingDoc] = useState(false);
+    const [lessonPlans, setLessonPlans] = useState<any[]>([]);
+    const [selectedLessonPlanId, setSelectedLessonPlanId] = useState<string | null>(null);
+    const [lessonPlanFeedback, setLessonPlanFeedback] = useState('');
+    const [isUpdatingLessonPlan, setIsUpdatingLessonPlan] = useState(false);
+    const [pendingLessonPlansCount, setPendingLessonPlansCount] = useState(0);
+    const printRef = useRef<HTMLDivElement | null>(null);
 
     // Grading Config State
     const [gradingConfig, setGradingConfig] = useState<GradingConfig>(DEFAULT_GRADING_CONFIG);
@@ -37,17 +47,19 @@ const AdminDashboard: React.FC = () => {
             setLoadingData(true);
             setErrorMessage('');
             try {
-                const [dashboardData, transactionsData, studentsData, gradingData] = await Promise.all([
+                const [dashboardData, transactionsData, studentsData, gradingData, pendingPlans] = await Promise.all([
                     backend.fetchAdminDashboard(),
                     backend.fetchTransactions(),
                     backend.fetchStudents(),
                     backend.fetchGradingConfig().catch(() => null),
+                    backend.fetchLessonPlans({ status: 'Pending' }).catch(() => []),
                 ]);
                 setDashboard(dashboardData);
                 setFinanceData(dashboardData?.finance_series || []);
                 setEnrollmentData(dashboardData?.enrollment_by_grade || []);
                 setTransactions(transactionsData || []);
                 setStudents(studentsData || []);
+                setPendingLessonPlansCount(Array.isArray(pendingPlans) ? pendingPlans.length : 0);
                 if (gradingData) {
                     setGradingConfig({
                         system: gradingData.system,
@@ -69,6 +81,34 @@ const AdminDashboard: React.FC = () => {
         loadData();
     }, []);
 
+    useEffect(() => {
+        setViewMode(initialView);
+    }, [initialView]);
+
+    useEffect(() => {
+        if (viewMode !== 'lessonPlans') return;
+        const loadPlans = async () => {
+            try {
+                const data = await backend.fetchLessonPlans();
+                setLessonPlans(data.map((item: any) => ({
+                    ...item,
+                    id: String(item.id),
+                })));
+                if (data.length && !selectedLessonPlanId) {
+                    setSelectedLessonPlanId(String(data[0].id));
+                }
+            } catch (error) {
+                console.error('Failed to load lesson plans', error);
+            }
+        };
+        loadPlans();
+    }, [viewMode]);
+
+    useEffect(() => {
+        if (!selectedLessonPlan) return;
+        setLessonPlanFeedback(selectedLessonPlan.feedback || '');
+    }, [selectedLessonPlanId, lessonPlans]);
+
     const stats = useMemo(() => {
         const income = Number(dashboard?.finance_month?.income || 0);
         const expense = Number(dashboard?.finance_month?.expense || 0);
@@ -80,6 +120,54 @@ const AdminDashboard: React.FC = () => {
             net,
         };
     }, [dashboard]);
+
+    const selectedLessonPlan = lessonPlans.find((plan) => String(plan.id) === String(selectedLessonPlanId)) || null;
+
+    const handleUpdateLessonPlanStatus = async (status: 'Approved' | 'Rejected') => {
+        if (!selectedLessonPlanId) return;
+        setIsUpdatingLessonPlan(true);
+        try {
+            const updated = await backend.updateLessonPlan(selectedLessonPlanId, {
+                status,
+                feedback: lessonPlanFeedback,
+            });
+            setLessonPlans((prev) => prev.map((plan) => String(plan.id) === String(updated.id) ? { ...updated, id: String(updated.id) } : plan));
+            setLessonPlanFeedback('');
+        } catch (error) {
+            console.error('Failed to update lesson plan', error);
+        } finally {
+            setIsUpdatingLessonPlan(false);
+        }
+    };
+
+    const handlePrintDoc = () => {
+        if (!printRef.current) return;
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+        const content = printRef.current.innerHTML;
+        printWindow.document.open();
+        printWindow.document.write(`
+            <html>
+                <head>
+                    <title>Documento</title>
+                    <style>
+                        body { font-family: "Times New Roman", serif; color: #0f172a; padding: 24px; }
+                        h2 { text-align: center; margin-bottom: 24px; }
+                        .markdown-content { font-size: 14px; line-height: 1.6; }
+                        .signature { margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+                        .signature-line { border-top: 1px solid #1e293b; width: 140px; margin: 0 auto; }
+                        .signature-label { text-transform: uppercase; font-size: 11px; font-weight: bold; text-align: center; margin-top: 8px; }
+                    </style>
+                </head>
+                <body>
+                    ${content}
+                </body>
+            </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => printWindow.print(), 250);
+    };
 
     const handleGenerateInsight = async () => {
         setLoadingAi(true);
@@ -140,12 +228,13 @@ const AdminDashboard: React.FC = () => {
                     <h2 className="text-2xl font-bold text-slate-800">
                         {viewMode === 'overview' ? 'Visão Geral da Escola' :
                             viewMode === 'documents' ? 'Secretaria Digital' :
-                                'Configuração de Notas'}
+                                viewMode === 'lessonPlans' ? 'Planos de Aula' : 'Configuração de Notas'}
                     </h2>
                     <p className="text-slate-500">
                         {viewMode === 'overview' ? 'Bem-vindo ao painel administrativo.' :
                             viewMode === 'documents' ? 'Emissão e gestão de documentos oficiais.' :
-                                'Definição de critérios de avaliação e pesos.'}
+                                viewMode === 'lessonPlans' ? 'Aprove ou solicite ajustes nos planos enviados pelos professores.' :
+                                    'Definição de critérios de avaliação e pesos.'}
                     </p>
                 </div>
                 <div className="flex flex-wrap gap-3 w-full md:w-auto">
@@ -171,6 +260,18 @@ const AdminDashboard: React.FC = () => {
                             >
                                 <Settings size={18} />
                                 Config. Notas
+                            </button>
+                            <button
+                                onClick={() => setViewMode('lessonPlans')}
+                                className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2 rounded-lg hover:bg-slate-50 transition-colors"
+                            >
+                                <CheckCircle size={18} />
+                                Planos de Aula
+                                {pendingLessonPlansCount > 0 && (
+                                    <span className="ml-1 px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-xs font-bold">
+                                        {pendingLessonPlansCount}
+                                    </span>
+                                )}
                             </button>
                             <button
                                 onClick={() => setViewMode('documents')}
@@ -485,6 +586,134 @@ const AdminDashboard: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            ) : viewMode === 'lessonPlans' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                        <div className="p-4 border-b border-slate-100">
+                            <h3 className="font-bold text-slate-800">Planos Enviados</h3>
+                        </div>
+                        <div className="divide-y divide-slate-100 max-h-[70vh] overflow-y-auto">
+                            {lessonPlans.map((plan) => (
+                                <button
+                                    key={plan.id}
+                                    onClick={() => {
+                                        setSelectedLessonPlanId(String(plan.id));
+                                        setLessonPlanFeedback(plan.feedback || '');
+                                    }}
+                                    className={`w-full text-left p-4 hover:bg-slate-50 transition-colors ${String(plan.id) === String(selectedLessonPlanId) ? 'bg-indigo-50' : ''}`}
+                                >
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div>
+                                            <div className="font-semibold text-slate-800 text-sm">{plan.topic || plan.subject}</div>
+                                            <div className="text-xs text-slate-500 mt-1">
+                                                {plan.teacher_name || 'Professor'} • {plan.classroom_name || 'Turma'}
+                                            </div>
+                                        </div>
+                                        <span className={`text-[10px] px-2 py-1 rounded-full font-semibold ${plan.status === 'Approved'
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : plan.status === 'Rejected'
+                                                ? 'bg-rose-100 text-rose-700'
+                                                : 'bg-amber-100 text-amber-700'
+                                        }`}>
+                                            {plan.status === 'Approved' ? 'Aprovado' : plan.status === 'Rejected' ? 'Reprovado' : 'Pendente'}
+                                        </span>
+                                    </div>
+                                </button>
+                            ))}
+                            {lessonPlans.length === 0 && (
+                                <div className="p-6 text-sm text-slate-400 text-center">Nenhum plano enviado.</div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-100 p-6">
+                        {selectedLessonPlan ? (
+                            <div className="space-y-6">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">{selectedLessonPlan.topic}</h3>
+                                        <p className="text-sm text-slate-500 mt-1">
+                                            {selectedLessonPlan.teacher_name || 'Professor'} • {selectedLessonPlan.classroom_name || 'Turma'} • {new Date(selectedLessonPlan.date).toLocaleDateString('pt-BR')}
+                                        </p>
+                                    </div>
+                                    <span className={`text-xs px-3 py-1 rounded-full font-semibold ${selectedLessonPlan.status === 'Approved'
+                                        ? 'bg-emerald-100 text-emerald-700'
+                                        : selectedLessonPlan.status === 'Rejected'
+                                            ? 'bg-rose-100 text-rose-700'
+                                            : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                        {selectedLessonPlan.status === 'Approved' ? 'Aprovado' : selectedLessonPlan.status === 'Rejected' ? 'Reprovado' : 'Pendente'}
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-slate-600">
+                                    <div><span className="font-semibold text-slate-700">Disciplina:</span> {selectedLessonPlan.subject}</div>
+                                    <div><span className="font-semibold text-slate-700">Série/Turma:</span> {selectedLessonPlan.grade_level || '—'}</div>
+                                    <div><span className="font-semibold text-slate-700">Duração:</span> {selectedLessonPlan.duration || '—'}</div>
+                                </div>
+
+                                <div className="space-y-4 text-sm text-slate-700">
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Objetivos</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 whitespace-pre-line">{selectedLessonPlan.objectives || '—'}</div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Conteúdo Programático</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 whitespace-pre-line">{selectedLessonPlan.content_program || '—'}</div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Metodologia</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 whitespace-pre-line">{selectedLessonPlan.methodology || '—'}</div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Recursos Didáticos</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 whitespace-pre-line">{selectedLessonPlan.resources || '—'}</div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Atividades</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 whitespace-pre-line">{selectedLessonPlan.activities || '—'}</div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Avaliação</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-3 whitespace-pre-line">{selectedLessonPlan.assessment || '—'}</div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="block text-sm font-semibold text-slate-700">Parecer</label>
+                                    <textarea
+                                        className="w-full border border-slate-200 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none"
+                                        value={lessonPlanFeedback}
+                                        onChange={(e) => setLessonPlanFeedback(e.target.value)}
+                                        placeholder="Oriente ajustes ou aprove."
+                                    />
+                                </div>
+
+                                <div className="flex flex-wrap gap-3">
+                                    <button
+                                        onClick={() => handleUpdateLessonPlanStatus('Approved')}
+                                        disabled={isUpdatingLessonPlan}
+                                        className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-70"
+                                    >
+                                        Aprovar
+                                    </button>
+                                    <button
+                                        onClick={() => handleUpdateLessonPlanStatus('Rejected')}
+                                        disabled={isUpdatingLessonPlan}
+                                        className="px-4 py-2 bg-rose-600 text-white rounded-lg text-sm font-medium hover:bg-rose-700 disabled:opacity-70"
+                                    >
+                                        Reprovar
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center text-slate-400 py-12">
+                                <FileText size={48} className="mx-auto mb-3 opacity-30" />
+                                <p>Selecione um plano para revisar.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 animate-fade-in">
                     {/* Document Controls */}
@@ -567,29 +796,32 @@ const AdminDashboard: React.FC = () => {
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 pb-4 border-b border-slate-100 gap-4 sm:gap-0">
                             <h3 className="font-bold text-slate-800">Visualização</h3>
                             {generatedDoc && (
-                                <button className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 text-sm font-medium w-full sm:w-auto justify-center sm:justify-start">
+                                <button
+                                    onClick={handlePrintDoc}
+                                    className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 text-sm font-medium w-full sm:w-auto justify-center sm:justify-start"
+                                >
                                     <Printer size={16} /> Imprimir / Salvar PDF
                                 </button>
                             )}
                         </div>
 
                         {generatedDoc ? (
-                            <div className="flex-1 bg-white">
+                            <div className="flex-1 bg-white" ref={printRef}>
                                 {/* Mock Paper Effect */}
                                 <div className="prose prose-slate max-w-none text-slate-800 text-sm leading-relaxed markdown-content font-serif">
                                     <div dangerouslySetInnerHTML={{ __html: generatedDoc.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/#(.*?)<br\/>/g, '<h2 class="text-xl font-bold text-center mb-6">$1</h2>') }} />
                                 </div>
 
-                                <div className="mt-12 pt-8 border-t border-slate-300 grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div className="mt-12 pt-8 border-t border-slate-300 grid grid-cols-1 md:grid-cols-2 gap-8 signature">
                                     <div className="text-center">
                                         <div className="h-16 mb-2"></div>
-                                        <div className="border-t border-slate-800 w-32 mx-auto"></div>
-                                        <p className="text-xs font-bold uppercase mt-2">Secretaria Escolar</p>
+                                        <div className="border-t border-slate-800 w-32 mx-auto signature-line"></div>
+                                        <p className="text-xs font-bold uppercase mt-2 signature-label">Secretaria Escolar</p>
                                     </div>
                                     <div className="text-center">
                                         <div className="h-16 mb-2"></div>
-                                        <div className="border-t border-slate-800 w-32 mx-auto"></div>
-                                        <p className="text-xs font-bold uppercase mt-2">Diretoria</p>
+                                        <div className="border-t border-slate-800 w-32 mx-auto signature-line"></div>
+                                        <p className="text-xs font-bold uppercase mt-2 signature-label">Diretoria</p>
                                     </div>
                                 </div>
                             </div>

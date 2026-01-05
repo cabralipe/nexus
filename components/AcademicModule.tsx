@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Calendar, Clock, Download, CheckCircle, XCircle, FileText, Plus, Save, Edit, Trash2, FolderOpen, Video, File, ExternalLink, Paperclip, Eraser, ScrollText, Target, Book, Search } from 'lucide-react';
+import { BookOpen, Calendar, Clock, Download, CheckCircle, XCircle, FileText, Plus, Save, Edit, Trash2, FolderOpen, Video, File, ExternalLink, Paperclip, Eraser, ScrollText, Target, Book, Search, ClipboardList } from 'lucide-react';
 import { ClassDiaryEntry, GradeRecord, GradingConfig, SchoolClass, StudentProfile } from '../types';
 import { DEFAULT_GRADING_CONFIG } from '../constants';
 import { exportToCSV } from '../utils';
 import { backend } from '../services/backendService';
+import { generateInsight } from '../services/geminiService';
 
-type Tab = 'grades' | 'attendance' | 'diary' | 'materials' | 'syllabus';
+type Tab = 'grades' | 'attendance' | 'diary' | 'materials' | 'syllabus' | 'lessonPlans';
 
 interface Syllabus {
     id: string;
@@ -15,6 +16,31 @@ interface Syllabus {
     objectives: string[];
     bibliography: string;
 }
+
+interface LessonPlan {
+    id: string;
+    teacherName: string;
+    classroomId: string;
+    classroomName: string;
+    subject: string;
+    gradeLevel: string;
+    date: string;
+    duration: string;
+    topic: string;
+    objectives: string;
+    contentProgram: string;
+    methodology: string;
+    resources: string;
+    activities: string;
+    assessment: string;
+    status: string;
+    feedback?: string;
+}
+
+const getLocalDateString = (referenceDate = new Date()): string => {
+    const offsetMs = referenceDate.getTimezoneOffset() * 60 * 1000;
+    return new Date(referenceDate.getTime() - offsetMs).toISOString().split('T')[0];
+};
 
 const getDefaultTerm = (system: GradingConfig['system'], referenceDate = new Date()): string => {
     const month = referenceDate.getMonth() + 1;
@@ -33,7 +59,7 @@ const getDefaultTerm = (system: GradingConfig['system'], referenceDate = new Dat
 
 const AcademicModule: React.FC = () => {
     const [activeTab, setActiveTab] = useState<Tab>('grades');
-    const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
+    const [attendanceDate, setAttendanceDate] = useState(getLocalDateString());
     // Simple state to track attendance checkboxes (id -> status)
     const [attendanceState, setAttendanceState] = useState<Record<string, string>>({});
     const [classes, setClasses] = useState<SchoolClass[]>([]);
@@ -45,6 +71,8 @@ const AcademicModule: React.FC = () => {
     const [currentStudentId, setCurrentStudentId] = useState<string | null>(null);
     const [gradingConfig, setGradingConfig] = useState<GradingConfig>(DEFAULT_GRADING_CONFIG);
     const [selectedTerm, setSelectedTerm] = useState<string>('');
+    const [schoolName, setSchoolName] = useState('');
+    const [teacherName, setTeacherName] = useState('');
 
     // Grade State
     const [gradesData, setGradesData] = useState<GradeRecord[]>([]);
@@ -70,6 +98,15 @@ const AcademicModule: React.FC = () => {
     const [isCreatingSyllabus, setIsCreatingSyllabus] = useState(false);
     const [syllabusFormData, setSyllabusFormData] = useState<Syllabus | null>(null);
 
+    // Lesson Plans State
+    const [lessonPlans, setLessonPlans] = useState<LessonPlan[]>([]);
+    const [selectedLessonPlanId, setSelectedLessonPlanId] = useState<string | null>(null);
+    const [isEditingLessonPlan, setIsEditingLessonPlan] = useState(false);
+    const [isSavingLessonPlan, setIsSavingLessonPlan] = useState(false);
+    const [isGeneratingLessonPlan, setIsGeneratingLessonPlan] = useState(false);
+    const [lessonPlanForm, setLessonPlanForm] = useState<LessonPlan | null>(null);
+    const [lessonPlanAiContext, setLessonPlanAiContext] = useState('');
+
     useEffect(() => {
         const loadInitial = async () => {
             try {
@@ -84,6 +121,8 @@ const AcademicModule: React.FC = () => {
                 setCurrentUserId(String(me.id));
                 setCurrentUserRole(normalizedRole || null);
                 setCurrentStudentId(me.student_id ? String(me.student_id) : null);
+                setSchoolName(me.school?.name || '');
+                setTeacherName(me.username || '');
 
                 const allocationsByClass = await Promise.all(
                     classesData.map(async (item: any) => {
@@ -209,6 +248,7 @@ const AcademicModule: React.FC = () => {
     }, [visibleClasses, selectedClassId]);
 
     const isStudent = currentUserRole === 'student';
+    const isTeacher = currentUserRole === 'teacher';
     const selectedClass = visibleClasses.find(c => c.id === selectedClassId);
 
     const availableSubjects = React.useMemo(() => {
@@ -334,6 +374,26 @@ const AcademicModule: React.FC = () => {
 
         loadClassData();
     }, [selectedClassId, attendanceDate, selectedSubject, selectedTerm, students]);
+
+    useEffect(() => {
+        if (activeTab !== 'lessonPlans') return;
+        const loadLessonPlans = async () => {
+            try {
+                const params: Record<string, string> = {};
+                if (selectedClassId) params.classroom_id = selectedClassId;
+                if (selectedSubject) params.subject = selectedSubject;
+                const data = await backend.fetchLessonPlans(params);
+                const mapped = data.map(mapLessonPlan);
+                setLessonPlans(mapped);
+                if (mapped.length && !selectedLessonPlanId) {
+                    setSelectedLessonPlanId(mapped[0].id);
+                }
+            } catch (error) {
+                console.error("Failed to load lesson plans", error);
+            }
+        };
+        loadLessonPlans();
+    }, [activeTab, selectedClassId, selectedSubject]);
 
     const calculateAverage = (grade1: number | '' | null, grade2: number | '' | null) => {
         if (typeof grade1 !== 'number' || typeof grade2 !== 'number') return null;
@@ -634,6 +694,7 @@ const AcademicModule: React.FC = () => {
         });
         setIsEditingSyllabus(true);
         setIsCreatingSyllabus(true);
+        setSelectedSyllabusId('');
     };
 
     const handleSaveSyllabus = async () => {
@@ -695,6 +756,154 @@ const AcademicModule: React.FC = () => {
     };
 
     const activeSyllabus = syllabi.find(s => s.id === selectedSyllabusId);
+    const selectedLessonPlan = lessonPlans.find(p => p.id === selectedLessonPlanId) || null;
+
+    const mapLessonPlan = (item: any): LessonPlan => ({
+        id: String(item.id),
+        teacherName: item.teacher_name || '',
+        classroomId: item.classroom_id ? String(item.classroom_id) : '',
+        classroomName: item.classroom_name || '',
+        subject: item.subject || '',
+        gradeLevel: item.grade_level || '',
+        date: item.date || '',
+        duration: item.duration || '',
+        topic: item.topic || '',
+        objectives: item.objectives || '',
+        contentProgram: item.content_program || '',
+        methodology: item.methodology || '',
+        resources: item.resources || '',
+        activities: item.activities || '',
+        assessment: item.assessment || '',
+        status: item.status || 'Pending',
+        feedback: item.feedback || '',
+    });
+
+    const extractJsonPayload = (text: string) => {
+        const match = text.match(/\{[\s\S]*\}/);
+        if (!match) return null;
+        try {
+            return JSON.parse(match[0]);
+        } catch {
+            return null;
+        }
+    };
+
+    const normalizeAiField = (value: any) => {
+        if (!value) return '';
+        if (Array.isArray(value)) return value.join('\n');
+        if (typeof value === 'string') return value;
+        return String(value);
+    };
+
+    const handleStartLessonPlan = () => {
+        setLessonPlanForm({
+            id: '',
+            teacherName: teacherName || 'Professor(a)',
+            classroomId: selectedClassId || '',
+            classroomName: selectedClass?.name || '',
+            subject: selectedSubject || '',
+            gradeLevel: selectedClass?.gradeLevel || '',
+            date: getLocalDateString(),
+            duration: '',
+            topic: '',
+            objectives: '',
+            contentProgram: '',
+            methodology: '',
+            resources: '',
+            activities: '',
+            assessment: '',
+            status: 'Pending',
+            feedback: '',
+        });
+        setSelectedLessonPlanId(null);
+        setIsEditingLessonPlan(true);
+        setLessonPlanAiContext('');
+    };
+
+    const handleEditLessonPlan = (plan: LessonPlan) => {
+        setLessonPlanForm({ ...plan });
+        setSelectedLessonPlanId(plan.id);
+        setIsEditingLessonPlan(true);
+    };
+
+    const handleSelectLessonPlan = (plan: LessonPlan) => {
+        setSelectedLessonPlanId(plan.id);
+        setIsEditingLessonPlan(false);
+        setLessonPlanForm(null);
+    };
+
+    const handleSaveLessonPlan = async () => {
+        if (!lessonPlanForm) return;
+        if (!lessonPlanForm.classroomId || !lessonPlanForm.subject || !lessonPlanForm.date || !lessonPlanForm.topic) {
+            alert('Preencha Turma, Disciplina, Data e Tema/Assunto.');
+            return;
+        }
+        setIsSavingLessonPlan(true);
+        try {
+            const payload = {
+                classroom_id: lessonPlanForm.classroomId,
+                subject: lessonPlanForm.subject,
+                grade_level: lessonPlanForm.gradeLevel,
+                date: lessonPlanForm.date,
+                duration: lessonPlanForm.duration,
+                topic: lessonPlanForm.topic,
+                objectives: lessonPlanForm.objectives,
+                content_program: lessonPlanForm.contentProgram,
+                methodology: lessonPlanForm.methodology,
+                resources: lessonPlanForm.resources,
+                activities: lessonPlanForm.activities,
+                assessment: lessonPlanForm.assessment,
+            };
+            if (lessonPlanForm.id) {
+                const updated = await backend.updateLessonPlan(lessonPlanForm.id, payload);
+                const mapped = mapLessonPlan(updated);
+                setLessonPlans(prev => prev.map(p => p.id === mapped.id ? mapped : p));
+                setLessonPlanForm(mapped);
+            } else {
+                const created = await backend.createLessonPlan(payload);
+                const mapped = mapLessonPlan(created);
+                setLessonPlans(prev => [mapped, ...prev]);
+                setLessonPlanForm(mapped);
+                setSelectedLessonPlanId(mapped.id);
+            }
+            setIsEditingLessonPlan(false);
+        } catch (error) {
+            console.error("Failed to save lesson plan", error);
+        } finally {
+            setIsSavingLessonPlan(false);
+        }
+    };
+
+    const handleGenerateLessonPlan = async () => {
+        if (!lessonPlanForm) return;
+        setIsGeneratingLessonPlan(true);
+        const prompt = `Gere um plano de aula em JSON com os campos: tema, objetivos, conteudo_programatico, metodologia, recursos_didaticos, atividades, avaliacao. Use verbos no infinitivo nos objetivos. Contexto: disciplina "${lessonPlanForm.subject}", serie/turma "${lessonPlanForm.gradeLevel}", duracao "${lessonPlanForm.duration}". Informacoes adicionais: "${lessonPlanAiContext}".`;
+        try {
+            const result = await generateInsight(prompt);
+            const parsed = extractJsonPayload(result);
+            if (parsed) {
+                setLessonPlanForm(prev => prev ? ({
+                    ...prev,
+                    topic: normalizeAiField(parsed.tema) || prev.topic,
+                    objectives: normalizeAiField(parsed.objetivos) || prev.objectives,
+                    contentProgram: normalizeAiField(parsed.conteudo_programatico || parsed.conteudoProgramatico) || prev.contentProgram,
+                    methodology: normalizeAiField(parsed.metodologia) || prev.methodology,
+                    resources: normalizeAiField(parsed.recursos_didaticos || parsed.recursos) || prev.resources,
+                    activities: normalizeAiField(parsed.atividades) || prev.activities,
+                    assessment: normalizeAiField(parsed.avaliacao) || prev.assessment,
+                }) : prev);
+            } else {
+                setLessonPlanForm(prev => prev ? ({
+                    ...prev,
+                    activities: result || prev.activities,
+                }) : prev);
+            }
+        } catch (error) {
+            console.error("Failed to generate lesson plan", error);
+        } finally {
+            setIsGeneratingLessonPlan(false);
+        }
+    };
 
     useEffect(() => {
         if (!isStudent) return;
@@ -774,6 +983,14 @@ const AcademicModule: React.FC = () => {
                 >
                     <ScrollText size={16} /> Ementas
                 </button>
+                {isTeacher && (
+                    <button
+                        onClick={() => setActiveTab('lessonPlans')}
+                        className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'lessonPlans' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                    >
+                        <ClipboardList size={16} /> Plano de Aula
+                    </button>
+                )}
             </div>
 
             {/* Tab Content: GRADES */}
@@ -1255,150 +1472,445 @@ const AcademicModule: React.FC = () => {
 
                     {/* Right Panel: Content View / Edit */}
                     <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
-                        {activeSyllabus ? (
-                            isEditingSyllabus && syllabusFormData ? (
-                                // EDIT MODE
-                                <div className="flex-1 flex flex-col p-8 overflow-y-auto">
-                                    <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
-                                        <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                            <Edit size={24} className="text-indigo-600" />
-                                            Editar Ementa: {syllabusFormData.subject}
-                                        </h3>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    setIsEditingSyllabus(false);
-                                                    setIsCreatingSyllabus(false);
-                                                    setSyllabusFormData(null);
-                                                }}
-                                                className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
-                                            >
-                                                Cancelar
-                                            </button>
-                                            <button
-                                                onClick={handleSaveSyllabus}
-                                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2"
-                                            >
-                                                <Save size={16} /> Salvar Alterações
-                                            </button>
+                        {isEditingSyllabus && syllabusFormData ? (
+                            <div className="flex-1 flex flex-col p-8 overflow-y-auto">
+                                <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+                                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                        <Edit size={24} className="text-indigo-600" />
+                                        {isCreatingSyllabus ? 'Nova Ementa' : `Editar Ementa: ${syllabusFormData.subject}`}
+                                    </h3>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => {
+                                                setIsEditingSyllabus(false);
+                                                setIsCreatingSyllabus(false);
+                                                setSyllabusFormData(null);
+                                            }}
+                                            className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button
+                                            onClick={handleSaveSyllabus}
+                                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2"
+                                        >
+                                            <Save size={16} /> Salvar Alterações
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Disciplina</label>
+                                            <input
+                                                type="text"
+                                                className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={syllabusFormData.subject}
+                                                onChange={e => setSyllabusFormData({ ...syllabusFormData, subject: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Série/Ano</label>
+                                            <input
+                                                type="text"
+                                                className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={syllabusFormData.gradeLevel}
+                                                onChange={e => setSyllabusFormData({ ...syllabusFormData, gradeLevel: e.target.value })}
+                                            />
                                         </div>
                                     </div>
-                                    <div className="space-y-6">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-sm font-bold text-slate-700 mb-2">Disciplina</label>
-                                                <input
-                                                    type="text"
-                                                    className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                                    value={syllabusFormData.subject}
-                                                    onChange={e => setSyllabusFormData({ ...syllabusFormData, subject: e.target.value })}
-                                                />
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Descrição da Disciplina</label>
+                                        <textarea
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none leading-relaxed"
+                                            value={syllabusFormData.description}
+                                            onChange={e => setSyllabusFormData({ ...syllabusFormData, description: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Objetivos de Aprendizagem</label>
+                                        <p className="text-xs text-slate-500 mb-2">Insira um objetivo por linha.</p>
+                                        <textarea
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-40 resize-none leading-relaxed"
+                                            value={syllabusFormData.objectives.join('\n')}
+                                            onChange={e => handleObjectivesChange(e.target.value)}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Bibliografia Básica</label>
+                                        <textarea
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none leading-relaxed"
+                                            value={syllabusFormData.bibliography}
+                                            onChange={e => setSyllabusFormData({ ...syllabusFormData, bibliography: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : activeSyllabus ? (
+                            <div className="flex-1 flex flex-col p-8 overflow-y-auto">
+                                <div className="flex justify-between items-start mb-8 pb-6 border-b border-slate-100">
+                                    <div>
+                                        <div className="flex items-center gap-3 mb-2">
+                                            <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
+                                                <Book size={24} />
                                             </div>
-                                            <div>
-                                                <label className="block text-sm font-bold text-slate-700 mb-2">Série/Ano</label>
-                                                <input
-                                                    type="text"
-                                                    className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                                    value={syllabusFormData.gradeLevel}
-                                                    onChange={e => setSyllabusFormData({ ...syllabusFormData, gradeLevel: e.target.value })}
-                                                />
-                                            </div>
+                                            <h2 className="text-2xl font-bold text-slate-800">{activeSyllabus.subject}</h2>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-bold text-slate-700 mb-2">Descrição da Disciplina</label>
-                                            <textarea
-                                                className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none leading-relaxed"
-                                                value={syllabusFormData.description}
-                                                onChange={e => setSyllabusFormData({ ...syllabusFormData, description: e.target.value })}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-bold text-slate-700 mb-2">Objetivos de Aprendizagem</label>
-                                            <p className="text-xs text-slate-500 mb-2">Insira um objetivo por linha.</p>
-                                            <textarea
-                                                className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-40 resize-none leading-relaxed"
-                                                value={syllabusFormData.objectives.join('\n')}
-                                                onChange={e => handleObjectivesChange(e.target.value)}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-sm font-bold text-slate-700 mb-2">Bibliografia Básica</label>
-                                            <textarea
-                                                className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none leading-relaxed"
-                                                value={syllabusFormData.bibliography}
-                                                onChange={e => setSyllabusFormData({ ...syllabusFormData, bibliography: e.target.value })}
-                                            />
+                                        <p className="text-slate-500 text-sm">
+                                            Plano de Ensino Anual
+                                            {activeSyllabus.gradeLevel ? ` • ${activeSyllabus.gradeLevel}` : ''}
+                                        </p>
+                                    </div>
+                                    {!isStudent && (
+                                        <button
+                                            onClick={handleEditSyllabus}
+                                            className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center gap-2 font-medium"
+                                        >
+                                            <Edit size={16} /> Editar Ementa
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="space-y-8 max-w-4xl">
+                                    <div className="prose-sm">
+                                        <h4 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
+                                            <FileText size={18} className="text-slate-400" />
+                                            Descrição
+                                        </h4>
+                                        <p className="text-slate-600 leading-relaxed text-justify bg-slate-50 p-4 rounded-lg border border-slate-100">
+                                            {activeSyllabus.description}
+                                        </p>
+                                    </div>
+
+                                    <div>
+                                        <h4 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
+                                            <Target size={18} className="text-slate-400" />
+                                            Objetivos de Aprendizagem
+                                        </h4>
+                                        <ul className="grid grid-cols-1 gap-3">
+                                            {activeSyllabus.objectives.map((obj, idx) => (
+                                                <li key={idx} className="flex items-start gap-3 text-slate-700 text-sm bg-white border border-slate-100 p-3 rounded-lg shadow-sm">
+                                                    <div className="mt-1 w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                                                    <span>{obj}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+
+                                    <div>
+                                        <h4 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
+                                            <Book size={18} className="text-slate-400" />
+                                            Bibliografia
+                                        </h4>
+                                        <div className="text-slate-600 text-sm bg-slate-50 p-4 rounded-lg border border-slate-100 whitespace-pre-line font-medium">
+                                            {activeSyllabus.bibliography}
                                         </div>
                                     </div>
                                 </div>
-                            ) : (
-                                // VIEW MODE
-                                <div className="flex-1 flex flex-col p-8 overflow-y-auto">
-                                    <div className="flex justify-between items-start mb-8 pb-6 border-b border-slate-100">
-                                        <div>
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className="p-2 bg-indigo-100 rounded-lg text-indigo-700">
-                                                    <Book size={24} />
-                                                </div>
-                                                <h2 className="text-2xl font-bold text-slate-800">{activeSyllabus.subject}</h2>
-                                            </div>
-                                            <p className="text-slate-500 text-sm">
-                                                Plano de Ensino Anual
-                                                {activeSyllabus.gradeLevel ? ` • ${activeSyllabus.gradeLevel}` : ''}
-                                            </p>
-                                        </div>
-                                        {!isStudent && (
-                                            <button
-                                                onClick={handleEditSyllabus}
-                                                className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center gap-2 font-medium"
-                                            >
-                                                <Edit size={16} /> Editar Ementa
-                                            </button>
-                                        )}
-                                    </div>
-
-                                    <div className="space-y-8 max-w-4xl">
-                                        <div className="prose-sm">
-                                            <h4 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
-                                                <FileText size={18} className="text-slate-400" />
-                                                Descrição
-                                            </h4>
-                                            <p className="text-slate-600 leading-relaxed text-justify bg-slate-50 p-4 rounded-lg border border-slate-100">
-                                                {activeSyllabus.description}
-                                            </p>
-                                        </div>
-
-                                        <div>
-                                            <h4 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
-                                                <Target size={18} className="text-slate-400" />
-                                                Objetivos de Aprendizagem
-                                            </h4>
-                                            <ul className="grid grid-cols-1 gap-3">
-                                                {activeSyllabus.objectives.map((obj, idx) => (
-                                                    <li key={idx} className="flex items-start gap-3 text-slate-700 text-sm bg-white border border-slate-100 p-3 rounded-lg shadow-sm">
-                                                        <div className="mt-1 w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                                                        <span>{obj}</span>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        </div>
-
-                                        <div>
-                                            <h4 className="text-lg font-bold text-slate-800 mb-3 flex items-center gap-2">
-                                                <Book size={18} className="text-slate-400" />
-                                                Bibliografia
-                                            </h4>
-                                            <div className="text-slate-600 text-sm bg-slate-50 p-4 rounded-lg border border-slate-100 whitespace-pre-line font-medium">
-                                                {activeSyllabus.bibliography}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )
+                            </div>
                         ) : (
                             <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
                                 <ScrollText size={64} className="mb-4 text-slate-200" />
                                 <p className="font-medium">Selecione uma disciplina para visualizar a ementa.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Tab Content: LESSON PLANS */}
+            {activeTab === 'lessonPlans' && isTeacher && (
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 animate-fade-in h-[calc(100vh-250px)]">
+                    <div className="lg:col-span-1 bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+                        <div className="p-4 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                            <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide">Planos</h3>
+                            <button
+                                onClick={handleStartLessonPlan}
+                                className="text-xs font-semibold text-indigo-600 hover:underline"
+                            >
+                                Novo
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-2 space-y-2">
+                            {lessonPlans.map(plan => (
+                                <button
+                                    key={plan.id}
+                                    onClick={() => handleSelectLessonPlan(plan)}
+                                    className={`w-full text-left p-3 rounded-lg border transition-all ${selectedLessonPlanId === plan.id
+                                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                        : 'hover:bg-slate-50 border-transparent text-slate-600'
+                                    }`}
+                                >
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div>
+                                            <div className="font-semibold text-sm">{plan.topic || plan.subject}</div>
+                                            <div className="text-xs text-slate-500 mt-1">
+                                                {plan.classroomName || 'Turma'} • {new Date(plan.date).toLocaleDateString('pt-BR')}
+                                            </div>
+                                        </div>
+                                        <span className={`text-[10px] px-2 py-1 rounded-full font-semibold ${plan.status === 'Approved'
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : plan.status === 'Rejected'
+                                                ? 'bg-rose-100 text-rose-700'
+                                                : 'bg-amber-100 text-amber-700'
+                                        }`}>
+                                            {plan.status === 'Approved' ? 'Aprovado' : plan.status === 'Rejected' ? 'Reprovado' : 'Pendente'}
+                                        </span>
+                                    </div>
+                                </button>
+                            ))}
+                            {lessonPlans.length === 0 && (
+                                <div className="text-center text-sm text-slate-400 py-6">
+                                    Nenhum plano enviado.
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col overflow-hidden">
+                        {isEditingLessonPlan && lessonPlanForm ? (
+                            <div className="flex-1 flex flex-col p-8 overflow-y-auto">
+                                <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-100">
+                                    <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                        <ClipboardList size={22} className="text-indigo-600" />
+                                        Plano de Aula
+                                    </h3>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => {
+                                                setIsEditingLessonPlan(false);
+                                                setLessonPlanForm(null);
+                                            }}
+                                            className="px-4 py-2 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-slate-50"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button
+                                            onClick={handleSaveLessonPlan}
+                                            disabled={isSavingLessonPlan}
+                                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-70"
+                                        >
+                                            <Save size={16} /> {isSavingLessonPlan ? 'Salvando...' : 'Enviar Plano'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Escola</label>
+                                            <input
+                                                type="text"
+                                                readOnly
+                                                className="w-full border border-slate-200 rounded-lg p-3 text-sm bg-slate-50 text-slate-600"
+                                                value={schoolName || '—'}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Professor(a)</label>
+                                            <input
+                                                type="text"
+                                                readOnly
+                                                className="w-full border border-slate-200 rounded-lg p-3 text-sm bg-slate-50 text-slate-600"
+                                                value={teacherName || 'Professor(a)'}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Disciplina</label>
+                                            <input
+                                                type="text"
+                                                className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={lessonPlanForm.subject}
+                                                onChange={e => setLessonPlanForm({ ...lessonPlanForm, subject: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Série/Turma</label>
+                                            <select
+                                                className="w-full border border-slate-300 rounded-lg p-3 text-sm bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={lessonPlanForm.classroomId}
+                                                onChange={e => {
+                                                    const classroomId = e.target.value;
+                                                    const classroom = visibleClasses.find(cls => cls.id === classroomId);
+                                                    setLessonPlanForm({
+                                                        ...lessonPlanForm,
+                                                        classroomId,
+                                                        classroomName: classroom?.name || '',
+                                                        gradeLevel: classroom?.gradeLevel || lessonPlanForm.gradeLevel,
+                                                    });
+                                                }}
+                                            >
+                                                <option value="">Selecione...</option>
+                                                {visibleClasses.map(cls => (
+                                                    <option key={cls.id} value={cls.id}>{cls.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Data</label>
+                                            <input
+                                                type="date"
+                                                className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                                value={lessonPlanForm.date}
+                                                onChange={e => setLessonPlanForm({ ...lessonPlanForm, date: e.target.value })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-bold text-slate-700 mb-2">Duração</label>
+                                            <input
+                                                type="text"
+                                                className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                                placeholder="Ex: 50 minutos"
+                                                value={lessonPlanForm.duration}
+                                                onChange={e => setLessonPlanForm({ ...lessonPlanForm, duration: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-4">
+                                        <div>
+                                            <div className="text-sm font-semibold text-slate-700">Gerar com IA</div>
+                                            <div className="text-xs text-slate-500">Preencha disciplina, série e duração para melhorar o resultado.</div>
+                                        </div>
+                                        <button
+                                            onClick={handleGenerateLessonPlan}
+                                            disabled={isGeneratingLessonPlan}
+                                            className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 disabled:opacity-70"
+                                        >
+                                            {isGeneratingLessonPlan ? 'Gerando...' : 'Usar IA'}
+                                        </button>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Contexto para a IA</label>
+                                        <textarea
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-20 resize-none"
+                                            placeholder="Ex: turma com dificuldade em leitura, foco em BNCC EF05LP..."
+                                            value={lessonPlanAiContext}
+                                            onChange={e => setLessonPlanAiContext(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Tema/Assunto</label>
+                                        <input
+                                            type="text"
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                            value={lessonPlanForm.topic}
+                                            onChange={e => setLessonPlanForm({ ...lessonPlanForm, topic: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Objetivos de Aprendizagem</label>
+                                        <textarea
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-28 resize-none"
+                                            value={lessonPlanForm.objectives}
+                                            onChange={e => setLessonPlanForm({ ...lessonPlanForm, objectives: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Conteúdo Programático</label>
+                                        <textarea
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-28 resize-none"
+                                            value={lessonPlanForm.contentProgram}
+                                            onChange={e => setLessonPlanForm({ ...lessonPlanForm, contentProgram: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Metodologia/Estratégias</label>
+                                        <textarea
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-24 resize-none"
+                                            value={lessonPlanForm.methodology}
+                                            onChange={e => setLessonPlanForm({ ...lessonPlanForm, methodology: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Recursos Didáticos</label>
+                                        <textarea
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-20 resize-none"
+                                            value={lessonPlanForm.resources}
+                                            onChange={e => setLessonPlanForm({ ...lessonPlanForm, resources: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Atividades</label>
+                                        <textarea
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-28 resize-none"
+                                            value={lessonPlanForm.activities}
+                                            onChange={e => setLessonPlanForm({ ...lessonPlanForm, activities: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-slate-700 mb-2">Avaliação</label>
+                                        <textarea
+                                            className="w-full border border-slate-300 rounded-lg p-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-20 resize-none"
+                                            value={lessonPlanForm.assessment}
+                                            onChange={e => setLessonPlanForm({ ...lessonPlanForm, assessment: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ) : selectedLessonPlan ? (
+                            <div className="flex-1 flex flex-col p-8 overflow-y-auto">
+                                <div className="flex justify-between items-start mb-8 pb-6 border-b border-slate-100">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-slate-800">{selectedLessonPlan.topic}</h2>
+                                        <p className="text-slate-500 text-sm mt-1">
+                                            {selectedLessonPlan.classroomName} • {new Date(selectedLessonPlan.date).toLocaleDateString('pt-BR')}
+                                        </p>
+                                        <span className={`inline-flex mt-3 px-3 py-1 rounded-full text-xs font-semibold ${selectedLessonPlan.status === 'Approved'
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : selectedLessonPlan.status === 'Rejected'
+                                                ? 'bg-rose-100 text-rose-700'
+                                                : 'bg-amber-100 text-amber-700'
+                                        }`}>
+                                            {selectedLessonPlan.status === 'Approved' ? 'Aprovado' : selectedLessonPlan.status === 'Rejected' ? 'Reprovado' : 'Pendente'}
+                                        </span>
+                                    </div>
+                                    <button
+                                        onClick={() => handleEditLessonPlan(selectedLessonPlan)}
+                                        className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-600 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center gap-2 font-medium"
+                                    >
+                                        <Edit size={16} /> Editar Plano
+                                    </button>
+                                </div>
+
+                                {selectedLessonPlan.feedback && (
+                                    <div className="mb-6 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
+                                        Parecer: {selectedLessonPlan.feedback}
+                                    </div>
+                                )}
+
+                                <div className="space-y-6 text-sm text-slate-700">
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Objetivos de Aprendizagem</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 whitespace-pre-line">{selectedLessonPlan.objectives || '—'}</div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Conteúdo Programático</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 whitespace-pre-line">{selectedLessonPlan.contentProgram || '—'}</div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Metodologia/Estratégias</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 whitespace-pre-line">{selectedLessonPlan.methodology || '—'}</div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Recursos Didáticos</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 whitespace-pre-line">{selectedLessonPlan.resources || '—'}</div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Atividades</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 whitespace-pre-line">{selectedLessonPlan.activities || '—'}</div>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-bold text-slate-800 mb-2">Avaliação</h4>
+                                        <div className="bg-slate-50 border border-slate-100 rounded-lg p-4 whitespace-pre-line">{selectedLessonPlan.assessment || '—'}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                                <ClipboardList size={64} className="mb-4 text-slate-200" />
+                                <p className="font-medium">Clique em "Novo" para criar um plano de aula.</p>
                             </div>
                         )}
                     </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Wallet, BookOpen, Settings, Users, MessageCircle, Activity, ClipboardCheck, GraduationCap, Package, UserPlus, Grid, CalendarClock, BookUser } from 'lucide-react';
+import { LayoutDashboard, Wallet, BookOpen, Settings, Users, MessageCircle, Activity, ClipboardCheck, GraduationCap, Package, UserPlus, Grid, CalendarClock, BookUser, ClipboardList } from 'lucide-react';
 import { UserRole, ViewState, GradingConfig, InventoryItem, StudentProfile, Staff, SchoolClass } from './types';
 
 export const MOCK_STUDENTS = [
@@ -236,6 +236,12 @@ export const NAV_ITEMS = [
     id: ViewState.TEACHER_MONITORING,
     label: 'Monitoramento',
     icon: <Activity size={20} />,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: ViewState.LESSON_PLANS,
+    label: 'Planos de Aula',
+    icon: <ClipboardList size={20} />,
     roles: [UserRole.ADMIN],
   },
   {

@@ -37,6 +37,7 @@ from .models import (
     InventoryMovement,
     InventoryRequest,
     Invoice,
+    LessonPlan,
     LearningMaterial,
     Message,
     Notice,
@@ -757,6 +758,39 @@ def _serialize_exam_submission(exam: ExamSubmission) -> Dict[str, Any]:
     }
 
 
+def _serialize_lesson_plan(plan: LessonPlan) -> Dict[str, Any]:
+    teacher_name = ""
+    if plan.teacher and plan.teacher.user:
+        teacher_name = (
+            f"{plan.teacher.user.first_name} {plan.teacher.user.last_name}".strip()
+            or plan.teacher.user.username
+        )
+    classroom_name = plan.classroom.name if plan.classroom else ""
+    return {
+        "id": plan.id,
+        "school_id": plan.school_id,
+        "teacher_id": plan.teacher.user_id if plan.teacher else None,
+        "teacher_name": teacher_name,
+        "classroom_id": plan.classroom_id,
+        "classroom_name": classroom_name,
+        "subject": plan.subject,
+        "grade_level": plan.grade_level,
+        "date": plan.date.isoformat(),
+        "duration": plan.duration,
+        "topic": plan.topic,
+        "objectives": plan.objectives,
+        "content_program": plan.content_program,
+        "methodology": plan.methodology,
+        "resources": plan.resources,
+        "activities": plan.activities,
+        "assessment": plan.assessment,
+        "status": plan.status,
+        "feedback": plan.feedback,
+        "submitted_at": plan.submitted_at.isoformat(),
+        "decided_at": plan.decided_at.isoformat() if plan.decided_at else None,
+    }
+
+
 def _serialize_notice(notice: Notice) -> Dict[str, Any]:
     author_name = ""
     author_role = ""
@@ -1427,6 +1461,13 @@ def teacher_activities(request):
         return error
 
     now = timezone.now()
+    date_value = None
+    if "date" in request.GET:
+        date_value, date_error = _parse_date_field(request.GET.get("date"), "date")
+        if date_error:
+            return date_error
+    today = date_value or timezone.localdate()
+    today_weekday = today.weekday()
     teachers = UserProfile.objects.select_related("user").filter(
         school=school, role=UserProfile.ROLE_TEACHER
     )
@@ -1481,6 +1522,24 @@ def teacher_activities(request):
             else:
                 status = "Idle"
 
+        scheduled_today = ClassScheduleEntry.objects.filter(
+            classroom__school=school,
+            teacher=profile,
+            day_of_week=today_weekday,
+        ).select_related("classroom")
+        required_plans = scheduled_today.count()
+        existing_plan_keys = set(
+            LessonPlan.objects.filter(
+                teacher=profile,
+                classroom__school=school,
+                date=today,
+            ).values_list("classroom_id", "subject")
+        )
+        missing_plans = sum(
+            1 for entry in scheduled_today if (entry.classroom_id, entry.subject) not in existing_plan_keys
+        )
+        submitted_plans = max(required_plans - missing_plans, 0)
+
         data.append(
             {
                 "id": profile.id,
@@ -1489,6 +1548,9 @@ def teacher_activities(request):
                 "lastLogin": last_login.isoformat() if last_login else None,
                 "lastDiaryUpdate": last_diary.date.isoformat() if last_diary else None,
                 "lastAttendanceUpdate": last_attendance.date.isoformat() if last_attendance else None,
+                "lessonPlanRequired": required_plans,
+                "lessonPlanSubmitted": submitted_plans,
+                "lessonPlanMissing": missing_plans,
                 "status": status,
             }
         )
@@ -1498,6 +1560,7 @@ def teacher_activities(request):
         "warning": sum(1 for item in data if item["status"] == "Warning"),
         "idle": sum(1 for item in data if item["status"] == "Idle"),
         "total": len(data),
+        "lessonPlanMissing": sum(item.get("lessonPlanMissing", 0) for item in data),
     }
     return JsonResponse({"summary": summary, "data": data})
 
@@ -5127,6 +5190,196 @@ def exam_submission_detail(request, exam_id: int):
         request,
     )
     return JsonResponse({"data": _serialize_exam_submission(exam)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def lesson_plan_records(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+
+    if request.method == "GET":
+        items = LessonPlan.objects.filter(school=school)
+        if profile and profile.role == UserProfile.ROLE_TEACHER:
+            items = items.filter(teacher=profile)
+        if "status" in request.GET:
+            items = items.filter(status=request.GET.get("status"))
+        if "teacher_id" in request.GET:
+            items = items.filter(teacher__user_id=request.GET.get("teacher_id"))
+        if "classroom_id" in request.GET:
+            items = items.filter(classroom_id=request.GET.get("classroom_id"))
+        if "subject" in request.GET:
+            items = items.filter(subject__icontains=request.GET.get("subject"))
+        if "date" in request.GET:
+            items = items.filter(date=request.GET.get("date"))
+        items = items.select_related("teacher__user", "classroom").order_by("-date", "-submitted_at")
+        return JsonResponse(_paginate(request, items, _serialize_lesson_plan))
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    payload = _parse_json(request)
+    error = _missing_fields(payload, ["classroom_id", "subject", "date", "topic"])
+    if error:
+        return JsonResponse(error, status=400)
+
+    classroom = Classroom.objects.filter(id=payload.get("classroom_id"), school=school).first()
+    if not classroom:
+        return JsonResponse({"error": "Classroom not found"}, status=404)
+
+    date_value, date_error = _parse_date_field(payload.get("date"), "date")
+    if date_error:
+        return date_error
+    if not date_value:
+        date_value = timezone.localdate()
+
+    plan = LessonPlan.objects.create(
+        school=school,
+        teacher=profile,
+        classroom=classroom,
+        subject=payload.get("subject", ""),
+        grade_level=payload.get("grade_level", ""),
+        date=date_value,
+        duration=payload.get("duration", ""),
+        topic=payload.get("topic", ""),
+        objectives=payload.get("objectives", ""),
+        content_program=payload.get("content_program", ""),
+        methodology=payload.get("methodology", ""),
+        resources=payload.get("resources", ""),
+        activities=payload.get("activities", ""),
+        assessment=payload.get("assessment", ""),
+        status=LessonPlan.STATUS_PENDING,
+        feedback="",
+    )
+    _log_action(
+        auth["user"],
+        school,
+        "lesson_plan_created",
+        str(plan.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_lesson_plan(plan)}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH"])
+def lesson_plan_detail(request, plan_id: int):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    plan = LessonPlan.objects.filter(id=plan_id, school=school).select_related("teacher").first()
+    if not plan:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+    if not profile:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    is_teacher_owner = profile.role == UserProfile.ROLE_TEACHER and plan.teacher_id == profile.id
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
+    )
+    if role_error:
+        return role_error
+    if profile.role == UserProfile.ROLE_TEACHER and not is_teacher_owner:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
+    payload = _parse_json(request)
+    content_fields = {
+        "subject": "subject",
+        "grade_level": "grade_level",
+        "duration": "duration",
+        "topic": "topic",
+        "objectives": "objectives",
+        "content_program": "content_program",
+        "methodology": "methodology",
+        "resources": "resources",
+        "activities": "activities",
+        "assessment": "assessment",
+    }
+    updated_content = False
+
+    if "classroom_id" in payload:
+        classroom = Classroom.objects.filter(id=payload.get("classroom_id"), school=school).first()
+        if not classroom:
+            return JsonResponse({"error": "Classroom not found"}, status=404)
+        plan.classroom = classroom
+        updated_content = True
+
+    if "date" in payload:
+        date_value, date_error = _parse_date_field(payload.get("date"), "date")
+        if date_error:
+            return date_error
+        if date_value:
+            plan.date = date_value
+            updated_content = True
+
+    for payload_key, model_field in content_fields.items():
+        if payload_key in payload:
+            setattr(plan, model_field, payload.get(payload_key, ""))
+            updated_content = True
+
+    if "feedback" in payload and profile.role in [
+        UserProfile.ROLE_ADMIN,
+        UserProfile.ROLE_DIRECTOR,
+        UserProfile.ROLE_COORDINATOR,
+    ]:
+        plan.feedback = payload.get("feedback", "")
+
+    if "status" in payload and profile.role in [
+        UserProfile.ROLE_ADMIN,
+        UserProfile.ROLE_DIRECTOR,
+        UserProfile.ROLE_COORDINATOR,
+    ]:
+        status_error = _validate_choice(
+            payload.get("status"), LessonPlan.STATUS_CHOICES, "status"
+        )
+        if status_error:
+            return status_error
+        plan.status = payload.get("status")
+        plan.decided_by = profile
+        plan.decided_at = timezone.now()
+
+    if profile.role == UserProfile.ROLE_TEACHER and updated_content:
+        plan.status = LessonPlan.STATUS_PENDING
+        plan.feedback = ""
+        plan.decided_by = None
+        plan.decided_at = None
+
+    plan.save()
+    _log_action(
+        auth["user"],
+        school,
+        "lesson_plan_updated",
+        str(plan.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_lesson_plan(plan)})
 
 
 @csrf_exempt
