@@ -23,6 +23,7 @@ import { backend } from './services/backendService';
 const App: React.FC = () => {
   const [userRole, setUserRole] = useState<UserRole>(UserRole.ADMIN);
   const [authRole, setAuthRole] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string>('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentView, setCurrentView] = useState<ViewState>(ViewState.DASHBOARD);
   const [authError, setAuthError] = useState('');
@@ -42,6 +43,17 @@ const App: React.FC = () => {
       student: UserRole.STUDENT,
     } as Record<string, UserRole>;
   }, []);
+
+  const roleTranslations: Record<string, string> = {
+    admin: 'Administrador',
+    director: 'Diretor',
+    coordinator: 'Coordenador',
+    finance: 'Financeiro',
+    staff: 'Funcionário',
+    support: 'Suporte',
+    teacher: 'Professor',
+    student: 'Aluno',
+  };
 
   // Mock Login/Role Switch functionality for SaaS Demo
   const switchRole = (role: UserRole) => {
@@ -123,6 +135,7 @@ const App: React.FC = () => {
         const normalizedRole = roleMapping[String(me.role || '').toLowerCase()] || UserRole.ADMIN;
         setUserRole(normalizedRole);
         setAuthRole(String(me.role || '').toLowerCase() || null);
+        setUserName((me as any).name || (me as any).username || me.email);
         if (me.school && me.school.logo) {
           setSchoolLogo(me.school.logo);
         }
@@ -132,6 +145,7 @@ const App: React.FC = () => {
         localStorage.removeItem('token');
         setIsAuthenticated(false);
         setAuthRole(null);
+        setUserName('');
         setSchoolLogo(null);
       } finally {
         setAuthLoading(false);
@@ -167,6 +181,7 @@ const App: React.FC = () => {
             const normalizedRole = roleMapping[rawRole] || roleFallback;
             setUserRole(normalizedRole);
             setAuthRole(rawRole || null);
+            setUserName(response.user?.name || response.user?.username || response.user?.email || 'Usuário');
             setIsAuthenticated(true);
             setCurrentView(ViewState.DASHBOARD);
             setIsSidebarOpen(false);
@@ -186,6 +201,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-50 flex font-sans text-slate-900">
       <Sidebar
         role={userRole}
+        userRoleLabel={roleTranslations[authRole || userRole.toLowerCase()] || authRole || userRole}
         currentView={currentView}
         onChangeView={setCurrentView}
         onLogout={async () => {
@@ -199,6 +215,7 @@ const App: React.FC = () => {
           setIsAuthenticated(false);
           setAuthError('');
           setAuthRole(null);
+          setUserName('');
           setIsSidebarOpen(false);
         }}
         isOpen={isSidebarOpen}
@@ -247,11 +264,13 @@ const App: React.FC = () => {
 
             <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
               <div className="text-right hidden md:block">
-                <p className="text-sm font-bold text-slate-800">Roberto Santos</p>
-                <p className="text-xs text-slate-500 capitalize">{userRole.toLowerCase()}</p>
+                <p className="text-sm font-bold text-slate-800">{userName || 'Usuário'}</p>
+                <p className="text-xs text-slate-500 capitalize">
+                  {roleTranslations[authRole || userRole.toLowerCase()] || authRole || userRole}
+                </p>
               </div>
               <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 font-bold border-2 border-white shadow-sm">
-                RS
+                {userName ? userName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : 'US'}
               </div>
             </div>
           </div>

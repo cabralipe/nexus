@@ -5,6 +5,7 @@ import { GraduationCap, LogOut, X } from 'lucide-react';
 
 interface SidebarProps {
   role: UserRole;
+  userRoleLabel?: string;
   currentView: ViewState;
   onChangeView: (view: ViewState) => void;
   onLogout: () => void;
@@ -15,6 +16,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({
   role,
+  userRoleLabel,
   currentView,
   onChangeView,
   onLogout,
@@ -82,7 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="p-4 border-t border-slate-800">
           <div className="bg-slate-800 rounded-lg p-3 mb-3">
             <p className="text-xs text-slate-400 uppercase font-bold mb-1">Perfil Atual</p>
-            <p className="text-sm font-medium text-white">{role}</p>
+            <p className="text-sm font-medium text-white">{userRoleLabel || role}</p>
           </div>
           <button
             onClick={onLogout}
