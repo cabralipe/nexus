@@ -6,9 +6,30 @@ type RequestOptions = {
   skipAuth?: boolean;
 };
 
+type ImpersonationProfile = {
+  id: string;
+  role: string;
+  student_id?: string | null;
+  username?: string;
+  email?: string;
+};
+
+const IMPERSONATION_KEY = "impersonationProfile";
+
 const getAuthToken = (): string | null => {
   return localStorage.getItem("authToken") || localStorage.getItem("token");
 };
+
+const loadImpersonation = (): ImpersonationProfile | null => {
+  try {
+    const raw = localStorage.getItem(IMPERSONATION_KEY);
+    return raw ? (JSON.parse(raw) as ImpersonationProfile) : null;
+  } catch {
+    return null;
+  }
+};
+
+let impersonationProfile: ImpersonationProfile | null = loadImpersonation();
 
 const requestJson = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -36,6 +57,17 @@ const requestJson = async <T>(path: string, options: RequestOptions = {}): Promi
 const withPagination = <T>(data: { data: T[] }): T[] => data.data || [];
 
 export const backend = {
+  getImpersonation() {
+    return impersonationProfile;
+  },
+  setImpersonation(profile: ImpersonationProfile | null) {
+    impersonationProfile = profile;
+    if (profile) {
+      localStorage.setItem(IMPERSONATION_KEY, JSON.stringify(profile));
+    } else {
+      localStorage.removeItem(IMPERSONATION_KEY);
+    }
+  },
   async login(usernameOrEmail: string, password: string) {
     return requestJson<{ token: string; user: any }>("/auth/login/", {
       method: "POST",
@@ -46,13 +78,49 @@ export const backend = {
   async logout() {
     return requestJson<{ success: boolean }>("/auth/logout/", { method: "POST" });
   },
-  async fetchMe() {
-    return requestJson<{ id: string; role: string; email: string; school?: any; student_id?: string | number }>(
-      "/auth/me/"
-    );
+  async fetchMe(options?: { ignoreImpersonation?: boolean }) {
+    const data = await requestJson<{
+      id: string;
+      role: string;
+      email: string;
+      username?: string;
+      school?: any;
+      student_id?: string | number;
+    }>("/auth/me/");
+    if (
+      !options?.ignoreImpersonation &&
+      impersonationProfile &&
+      String(data.role || "").toLowerCase() === "admin"
+    ) {
+      return {
+        ...data,
+        ...impersonationProfile,
+        role: impersonationProfile.role || data.role,
+        id: impersonationProfile.id || data.id,
+        student_id:
+          impersonationProfile.student_id !== undefined
+            ? impersonationProfile.student_id
+            : data.student_id,
+        username: impersonationProfile.username || data.username,
+        email: impersonationProfile.email || data.email,
+      };
+    }
+    return data;
   },
   async fetchStudents() {
     const data = await requestJson<{ data: any[] }>("/students/?page_size=200");
+    return withPagination(data);
+  },
+  async fetchUsers(params: { q?: string; role?: string } = {}) {
+    const searchParams = new URLSearchParams();
+    if (params.q) {
+      searchParams.set("q", params.q);
+    }
+    if (params.role) {
+      searchParams.set("role", params.role);
+    }
+    const query = searchParams.toString();
+    const data = await requestJson<{ data: any[] }>(`/users/?page_size=200${query ? `&${query}` : ""}`);
     return withPagination(data);
   },
   async createStudent(payload: Record<string, unknown>) {

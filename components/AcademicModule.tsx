@@ -84,8 +84,11 @@ const AcademicModule: React.FC = () => {
                         teacherId: String(alloc.teacher_id),
                     })),
                 }));
-                setClasses(classesList);
-                setSelectedClassId(classesList[0]?.id || null);
+                const filteredClasses = normalizedRole === 'teacher'
+                    ? classesList.filter((cls) => cls.teacherAllocations.some((alloc) => alloc.teacherId === String(me.id)))
+                    : classesList;
+                setClasses(filteredClasses);
+                setSelectedClassId(filteredClasses[0]?.id || null);
 
                 const studentList: StudentProfile[] = studentsData.map((student: any) => ({
                     id: String(student.id),

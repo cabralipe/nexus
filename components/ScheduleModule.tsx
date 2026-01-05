@@ -49,6 +49,8 @@ const ScheduleModule: React.FC = () => {
 
     const [teachers, setTeachers] = useState<Staff[]>([]);
     const [classes, setClasses] = useState<SchoolClass[]>([]);
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
     // Default to first teacher for demo purposes if null
     const [selectedTeacherId, setSelectedTeacherId] = useState<string | null>(null);
@@ -75,6 +77,8 @@ const ScheduleModule: React.FC = () => {
                 ]);
 
                 const normalizedRole = String(me.role || '').toLowerCase() || null;
+                setCurrentUserId(String(me.id));
+                setCurrentUserRole(normalizedRole);
 
                 const teachersList: Staff[] = staffData
                     .filter((member: any) => member.role === 'Teacher')
@@ -119,8 +123,23 @@ const ScheduleModule: React.FC = () => {
                         teacherId: String(alloc.teacher_id),
                     })),
                 }));
-                setClasses(classList);
-                setSelectedClassId(classList[0]?.id || null);
+
+                let filteredClasses = classList;
+                if (normalizedRole === 'student' && me.student_id) {
+                    const memberships = await Promise.all(
+                        classesData.map(async (item: any) => {
+                            const students = await backend.fetchClassroomStudents(String(item.id));
+                            return { id: String(item.id), students: students.map(String) };
+                        })
+                    );
+                    const membershipMap = new Map(memberships.map(({ id, students }) => [id, students]));
+                    filteredClasses = classList.filter((cls) =>
+                        membershipMap.get(cls.id)?.includes(String(me.student_id))
+                    );
+                }
+
+                setClasses(filteredClasses);
+                setSelectedClassId(filteredClasses[0]?.id || null);
 
                 const slotItems: TimeSlotItem[] = slotsData.length
                     ? slotsData.map((slot: any) => ({
@@ -171,6 +190,22 @@ const ScheduleModule: React.FC = () => {
 
         loadScheduleData();
     }, []);
+
+    const isTeacher = currentUserRole === 'teacher';
+    const isStudent = currentUserRole === 'student';
+    const isReadOnlyTimetable = isTeacher || isStudent;
+
+    useEffect(() => {
+        if (isTeacher && mode === 'configuration') {
+            setMode('personal');
+        }
+    }, [isTeacher, mode]);
+
+    useEffect(() => {
+        if (isStudent && mode !== 'timetable') {
+            setMode('timetable');
+        }
+    }, [isStudent, mode]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -235,6 +270,8 @@ const ScheduleModule: React.FC = () => {
     // --- Availability Logic ---
     const toggleAvailability = async (dayIndex: number, slotIndex: number) => {
         if (!selectedTeacherId) return;
+        if (isStudent) return;
+        if (isTeacher && selectedTeacherId !== currentUserId) return;
         const slot = timeSlots[slotIndex];
         if (!slot) return;
         const canPersist = /^\d+$/.test(slot.id);
@@ -304,6 +341,7 @@ const ScheduleModule: React.FC = () => {
 
     const handleSetSubject = async (dayIndex: number, slotIndex: number, subject: string) => {
         if (!selectedClassId) return;
+        if (isReadOnlyTimetable) return;
         const slot = timeSlots[slotIndex];
         if (!slot) return;
         const canPersist = /^\d+$/.test(slot.id);
@@ -445,25 +483,33 @@ const ScheduleModule: React.FC = () => {
                     <p className="text-slate-500">Defina a disponibilidade dos professores e monte o quadro de aulas.</p>
                 </div>
                 <div className="bg-slate-200 p-1 rounded-lg flex overflow-x-auto w-full lg:w-auto">
-                    <button
-                        onClick={() => setMode('personal')}
-                        className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'personal' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <Layout size={16} /> Minha Grade
-                    </button>
-                    <div className="w-px bg-slate-300 mx-1 my-2"></div>
-                    <button
-                        onClick={() => setMode('configuration')}
-                        className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'configuration' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <Settings size={16} /> Definição
-                    </button>
-                    <button
-                        onClick={() => setMode('availability')}
-                        className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'availability' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <User size={16} /> Disponibilidade
-                    </button>
+                    {!isStudent && (
+                        <>
+                            <button
+                                onClick={() => setMode('personal')}
+                                className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'personal' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                <Layout size={16} /> Minha Grade
+                            </button>
+                            <div className="w-px bg-slate-300 mx-1 my-2"></div>
+                        </>
+                    )}
+                    {!isTeacher && !isStudent && (
+                        <button
+                            onClick={() => setMode('configuration')}
+                            className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'configuration' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            <Settings size={16} /> Definição
+                        </button>
+                    )}
+                    {!isStudent && (
+                        <button
+                            onClick={() => setMode('availability')}
+                            className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'availability' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            <User size={16} /> Disponibilidade
+                        </button>
+                    )}
                     <button
                         onClick={() => setMode('timetable')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 whitespace-nowrap ${mode === 'timetable' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -563,18 +609,20 @@ const ScheduleModule: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-4 no-print">
                                 {/* Simulator for Demo Purposes */}
-                                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
-                                    <span className="text-xs text-slate-500 font-bold uppercase">Vendo como:</span>
-                                    <select
-                                        value={selectedTeacherId || ''}
-                                        onChange={(e) => setSelectedTeacherId(e.target.value)}
-                                        className="text-sm font-medium text-slate-700 outline-none bg-transparent"
-                                    >
-                                        {teachers.map(t => (
-                                            <option key={t.id} value={t.id}>{t.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                {!isTeacher && (
+                                    <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                                        <span className="text-xs text-slate-500 font-bold uppercase">Vendo como:</span>
+                                        <select
+                                            value={selectedTeacherId || ''}
+                                            onChange={(e) => setSelectedTeacherId(e.target.value)}
+                                            className="text-sm font-medium text-slate-700 outline-none bg-transparent"
+                                        >
+                                            {teachers.map(t => (
+                                                <option key={t.id} value={t.id}>{t.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
                                     <span className="text-xs text-slate-500 font-bold uppercase">Disciplina:</span>
                                     <select
@@ -722,7 +770,11 @@ const ScheduleModule: React.FC = () => {
                                             <p className="text-xs text-slate-500">
                                                 {mode === 'availability'
                                                     ? 'Clique nos horários para marcar como Indisponível (Vermelho).'
-                                                    : 'Clique nos horários para atribuir uma disciplina.'
+                                                    : isReadOnlyTimetable
+                                                        ? isStudent
+                                                            ? 'Visualização do quadro geral da sua turma.'
+                                                            : 'Visualização do quadro geral da escola.'
+                                                        : 'Clique nos horários para atribuir uma disciplina.'
                                                 }
                                             </p>
                                         </div>
@@ -745,7 +797,9 @@ const ScheduleModule: React.FC = () => {
                                             <div className="flex flex-col items-center justify-center h-full text-slate-400">
                                                 <Clock size={48} className="mb-4 opacity-20" />
                                                 <p>Nenhum horário configurado.</p>
-                                                <button onClick={() => setMode('configuration')} className="text-indigo-600 hover:underline mt-2">Configurar Horários</button>
+                                                {!isTeacher && (
+                                                    <button onClick={() => setMode('configuration')} className="text-indigo-600 hover:underline mt-2">Configurar Horários</button>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className="grid grid-cols-6 gap-2 min-w-[800px]">
@@ -795,6 +849,33 @@ const ScheduleModule: React.FC = () => {
                                                                 const teacherAlloc = selectedClass?.teacherAllocations.find(t => t.subject === subject);
                                                                 const teacher = teachers.find(t => t.id === teacherAlloc?.teacherId);
                                                                 const isMenuOpen = openSlotMenu?.dayIndex === dayIndex && openSlotMenu?.slotIndex === slotIndex;
+
+                                                                if (isReadOnlyTimetable) {
+                                                                    return (
+                                                                        <div
+                                                                            key={`${dayIndex}-${slotIndex}`}
+                                                                            className={`w-full h-24 rounded border p-2 flex flex-col items-start justify-start ${subject
+                                                                                ? 'bg-indigo-50 border-indigo-200 shadow-sm'
+                                                                                : 'bg-white border-slate-200 border-dashed'
+                                                                                }`}
+                                                                        >
+                                                                            {subject ? (
+                                                                                <>
+                                                                                    <div className="font-bold text-xs text-indigo-900 line-clamp-2">{subject}</div>
+                                                                                    {teacher && (
+                                                                                        <div className="mt-auto flex items-center gap-1 text-[10px] text-indigo-600 bg-white px-1.5 py-0.5 rounded border border-indigo-100 w-full">
+                                                                                            <User size={10} /> {teacher.name.split(' ')[0]}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </>
+                                                                            ) : (
+                                                                                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                                                                    <span className="text-xs">Livre</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                }
 
                                                                 return (
                                                                     <div key={`${dayIndex}-${slotIndex}`} className="relative group">

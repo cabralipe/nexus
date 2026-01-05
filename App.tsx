@@ -51,6 +51,61 @@ const App: React.FC = () => {
     setIsSidebarOpen(false);
   };
 
+  const handleRoleSwitch = async (nextRole: UserRole) => {
+    if (nextRole === UserRole.ADMIN) {
+      backend.setImpersonation(null);
+      switchRole(UserRole.ADMIN);
+      return;
+    }
+
+    const lookup = window.prompt('Informe o login do usuário para visualizar este perfil:');
+    if (!lookup) return;
+    const roleParam = nextRole === UserRole.TEACHER ? 'teacher' : 'student';
+
+    setAuthLoading(true);
+    setAuthError('');
+    try {
+      const candidates = await backend.fetchUsers({ q: lookup, role: roleParam });
+      if (candidates.length === 0) {
+        window.alert('Nenhum usuário encontrado com esse login.');
+        return;
+      }
+
+      let selected = candidates[0];
+      if (candidates.length > 1) {
+        const options = candidates
+          .map((item: any) => `${item.id} - ${item.username || ''} (${item.email || ''})`)
+          .join('\n');
+        const chosenId = window.prompt(
+          `Encontramos ${candidates.length} usuários. Informe o ID desejado:\n${options}`,
+        );
+        if (!chosenId) return;
+        const match = candidates.find((item: any) => String(item.id) === String(chosenId));
+        if (!match) {
+          window.alert('ID inválido.');
+          return;
+        }
+        selected = match;
+      }
+
+      backend.setImpersonation({
+        id: String(selected.id),
+        role: String(selected.role || roleParam),
+        student_id: selected.student_id ? String(selected.student_id) : null,
+        username: selected.username,
+        email: selected.email,
+      });
+
+      switchRole(nextRole);
+    } catch (error: any) {
+      const message = error?.message || 'Falha ao localizar usuário.';
+      setAuthError(message);
+      window.alert(message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   const renderContent = () => {
     // Specialized Views based on Nav Item
     if (currentView === ViewState.FINANCIAL) {
@@ -123,9 +178,15 @@ const App: React.FC = () => {
       if (!token) return;
       setAuthLoading(true);
       try {
-        const me = await backend.fetchMe();
+        const me = await backend.fetchMe({ ignoreImpersonation: true });
         const normalizedRole = roleMapping[String(me.role || '').toLowerCase()] || UserRole.ADMIN;
-        setUserRole(normalizedRole);
+        const viewAs = backend.getImpersonation();
+        if (viewAs && String(me.role || '').toLowerCase() === 'admin') {
+          const viewRole = roleMapping[String(viewAs.role || '').toLowerCase()] || UserRole.ADMIN;
+          setUserRole(viewRole);
+        } else {
+          setUserRole(normalizedRole);
+        }
         setAuthRole(String(me.role || '').toLowerCase() || null);
         if (me.school && me.school.logo) {
           setSchoolLogo(me.school.logo);
@@ -134,6 +195,7 @@ const App: React.FC = () => {
       } catch (error) {
         localStorage.removeItem('authToken');
         localStorage.removeItem('token');
+        backend.setImpersonation(null);
         setIsAuthenticated(false);
         setAuthRole(null);
         setSchoolLogo(null);
@@ -149,12 +211,16 @@ const App: React.FC = () => {
       NAV_ITEMS.filter((item) => item.roles.includes(userRole)).map((item) => item.id),
     );
   }, [userRole]);
+  const firstAllowedView = useMemo(() => {
+    const first = NAV_ITEMS.find((item) => item.roles.includes(userRole));
+    return first?.id ?? ViewState.DASHBOARD;
+  }, [userRole]);
 
   useEffect(() => {
     if (!allowedViews.has(currentView)) {
-      setCurrentView(ViewState.DASHBOARD);
+      setCurrentView(firstAllowedView);
     }
-  }, [allowedViews, currentView]);
+  }, [allowedViews, currentView, firstAllowedView]);
 
   if (!isAuthenticated) {
     return (
@@ -200,6 +266,7 @@ const App: React.FC = () => {
           }
           localStorage.removeItem('authToken');
           localStorage.removeItem('token');
+          backend.setImpersonation(null);
           setIsAuthenticated(false);
           setAuthError('');
           setAuthRole(null);
@@ -234,15 +301,17 @@ const App: React.FC = () => {
 
           <div className="flex items-center gap-4">
             {/* Role Switcher for Demo */}
-            <select
-              value={userRole}
-              onChange={(e) => switchRole(e.target.value as UserRole)}
-              className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded border border-slate-700 focus:outline-none"
-            >
-              <option value={UserRole.ADMIN}>Ver como Admin</option>
-              <option value={UserRole.TEACHER}>Ver como Professor</option>
-              <option value={UserRole.STUDENT}>Ver como Aluno</option>
-            </select>
+            {authRole === 'admin' && (
+              <select
+                value={userRole}
+                onChange={(e) => handleRoleSwitch(e.target.value as UserRole)}
+                className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded border border-slate-700 focus:outline-none"
+              >
+                <option value={UserRole.ADMIN}>Ver como Admin</option>
+                <option value={UserRole.TEACHER}>Ver como Professor</option>
+                <option value={UserRole.STUDENT}>Ver como Aluno</option>
+              </select>
+            )}
 
             <button className="relative p-2 hover:bg-slate-100 rounded-full transition-colors">
               <Bell size={20} className="text-slate-600" />

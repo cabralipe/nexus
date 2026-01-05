@@ -169,7 +169,7 @@ export const NAV_ITEMS = [
     id: ViewState.DASHBOARD,
     label: 'Dashboard',
     icon: <LayoutDashboard size={20} />,
-    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+    roles: [UserRole.ADMIN, UserRole.STUDENT],
   },
   {
     id: ViewState.REGISTRATION,
@@ -223,7 +223,7 @@ export const NAV_ITEMS = [
     id: ViewState.COMMUNICATION,
     label: 'Comunicação',
     icon: <MessageCircle size={20} />,
-    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+    roles: [UserRole.ADMIN, UserRole.STUDENT],
   },
   {
     id: ViewState.TEACHER_MONITORING,
@@ -241,6 +241,6 @@ export const NAV_ITEMS = [
     id: ViewState.SETTINGS,
     label: 'Configurações',
     icon: <Settings size={20} />,
-    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+    roles: [UserRole.ADMIN, UserRole.STUDENT],
   },
 ];
