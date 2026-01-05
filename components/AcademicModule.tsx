@@ -211,6 +211,13 @@ const AcademicModule: React.FC = () => {
                 const gradeParams: Record<string, string> = { classroom_id: selectedClassId };
                 const attendanceParams: Record<string, string> = { classroom_id: selectedClassId, date: attendanceDate };
                 const diaryParams: Record<string, string> = { classroom_id: selectedClassId };
+                let classStudentIds: string[] = [];
+                if (currentUserRole === 'student' && currentStudentId) {
+                    classStudentIds = [currentStudentId];
+                } else {
+                    const classroomStudents = await backend.fetchClassroomStudents(selectedClassId);
+                    classStudentIds = classroomStudents.map(String);
+                }
                 if (currentUserRole === 'student' && currentStudentId) {
                     gradeParams.student_id = currentStudentId;
                 }
@@ -231,20 +238,30 @@ const AcademicModule: React.FC = () => {
                 ]);
 
                 const studentMap = new Map(students.map(s => [s.id, s.name]));
-                const mappedGrades: any[] = grades.map((record: any) => ({
-                    id: String(record.id),
-                    studentName: studentMap.get(String(record.student_id)) || 'Aluno',
-                    subject: record.subject,
-                    grade1: record.grade1 ?? 0,
-                    grade2: record.grade2 ?? 0,
-                    recoveryGrade: record.recovery_grade ?? null,
-                    average: record.average ?? 0,
-                    finalGrade: record.final_grade ?? record.average ?? 0,
-                    term: record.term || '',
-                    date: record.date || '',
-                    studentId: String(record.student_id),
-                    classroomId: String(record.classroom_id),
-                }));
+                const gradeByStudent = new Map<string, any>();
+                grades.forEach((record: any) => {
+                    gradeByStudent.set(String(record.student_id), record);
+                });
+                const rosterIds = classStudentIds.length
+                    ? classStudentIds
+                    : grades.map((record: any) => String(record.student_id));
+                const mappedGrades: any[] = rosterIds.map((studentId) => {
+                    const record = gradeByStudent.get(studentId);
+                    return {
+                        id: record ? String(record.id) : `local-${studentId}`,
+                        studentName: studentMap.get(studentId) || 'Aluno',
+                        subject: record?.subject || selectedSubject || '',
+                        grade1: record?.grade1 ?? null,
+                        grade2: record?.grade2 ?? null,
+                        recoveryGrade: record?.recovery_grade ?? null,
+                        average: record?.average ?? 0,
+                        finalGrade: record?.final_grade ?? record?.average ?? 0,
+                        term: record?.term || '',
+                        date: record?.date || '',
+                        studentId: String(studentId),
+                        classroomId: record?.classroom_id ? String(record.classroom_id) : selectedClassId,
+                    };
+                });
                 setGradesData(mappedGrades);
 
                 if (currentUserRole !== 'student') {

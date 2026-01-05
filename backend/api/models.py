@@ -274,9 +274,13 @@ class FinancialTransaction(models.Model):
 
     school = models.ForeignKey(School, on_delete=models.CASCADE)
     invoice = models.ForeignKey(Invoice, on_delete=models.SET_NULL, null=True, blank=True)
+    student = models.ForeignKey(Student, on_delete=models.SET_NULL, null=True, blank=True)
     description = models.CharField(max_length=200)
     category = models.CharField(max_length=100, blank=True)
+    gross_amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
+    discount_type = models.CharField(max_length=20, blank=True)
+    discount_value = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     transaction_type = models.CharField(max_length=20, choices=TYPE_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_OPEN)
     date = models.DateField()

@@ -650,11 +650,15 @@ def _serialize_transaction(transaction: FinancialTransaction) -> Dict[str, Any]:
         "id": transaction.id,
         "school_id": transaction.school_id,
         "invoice_id": transaction.invoice_id,
+        "student_id": transaction.student_id,
         "description": transaction.description,
         "category": transaction.category,
+        "gross_amount": str(transaction.gross_amount) if transaction.gross_amount is not None else None,
         "amount": str(transaction.amount),
         "type": transaction.transaction_type,
         "status": transaction.status,
+        "discount_type": transaction.discount_type,
+        "discount_value": str(transaction.discount_value) if transaction.discount_value is not None else None,
         "date": transaction.date.isoformat(),
         "created_at": transaction.created_at.isoformat(),
     }
@@ -4340,6 +4344,8 @@ def transactions(request):
             items = items.filter(status=request.GET.get("status"))
         if "category" in request.GET:
             items = items.filter(category__icontains=request.GET.get("category"))
+        if "student_id" in request.GET:
+            items = items.filter(student_id=request.GET.get("student_id"))
         if "date_from" in request.GET:
             items = items.filter(date__gte=request.GET.get("date_from"))
         if "date_to" in request.GET:
@@ -4382,15 +4388,37 @@ def transactions(request):
         invoice = Invoice.objects.filter(id=payload.get("invoice_id"), student__school=school).first()
         if not invoice:
             return JsonResponse({"error": "Invalid invoice"}, status=400)
+    student = None
+    if payload.get("student_id"):
+        student = Student.objects.filter(id=payload.get("student_id"), school=school).first()
+        if not student:
+            return JsonResponse({"error": "Invalid student"}, status=400)
+    gross_amount = None
+    if payload.get("gross_amount") is not None:
+        gross_amount, gross_error = _parse_decimal_field(payload.get("gross_amount"), "gross_amount")
+        if gross_error:
+            return gross_error
+    discount_value = None
+    if payload.get("discount_value") is not None:
+        discount_value, discount_error = _parse_decimal_field(payload.get("discount_value"), "discount_value")
+        if discount_error:
+            return discount_error
+    discount_type = payload.get("discount_type", "")
+    if discount_type not in ["", "none", "percent", "amount"]:
+        return JsonResponse({"error": "Invalid discount_type"}, status=400)
 
     transaction = FinancialTransaction.objects.create(
         school=school,
         invoice=invoice,
+        student=student,
         description=payload.get("description", ""),
         category=payload.get("category", ""),
+        gross_amount=gross_amount,
         amount=amount,
         transaction_type=payload.get("type"),
         status=status,
+        discount_type=discount_type,
+        discount_value=discount_value,
         date=date_value,
     )
     _log_action(
@@ -4469,6 +4497,26 @@ def transaction_detail(request, transaction_id: int):
         if not invoice:
             return JsonResponse({"error": "Invalid invoice"}, status=400)
         transaction.invoice = invoice
+    if "student_id" in payload:
+        student = Student.objects.filter(id=payload.get("student_id"), school=school).first()
+        if not student:
+            return JsonResponse({"error": "Invalid student"}, status=400)
+        transaction.student = student
+    if "gross_amount" in payload:
+        gross_amount, gross_error = _parse_decimal_field(payload.get("gross_amount"), "gross_amount")
+        if gross_error:
+            return gross_error
+        transaction.gross_amount = gross_amount
+    if "discount_type" in payload:
+        discount_type = payload.get("discount_type", "")
+        if discount_type not in ["", "none", "percent", "amount"]:
+            return JsonResponse({"error": "Invalid discount_type"}, status=400)
+        transaction.discount_type = discount_type
+    if "discount_value" in payload:
+        discount_value, discount_error = _parse_decimal_field(payload.get("discount_value"), "discount_value")
+        if discount_error:
+            return discount_error
+        transaction.discount_value = discount_value
     transaction.save()
     _log_action(
         auth["user"],

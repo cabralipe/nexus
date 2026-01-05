@@ -101,7 +101,7 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 @admin.register(FinancialTransaction)
 class FinancialTransactionAdmin(admin.ModelAdmin):
-    list_display = ("id", "description", "transaction_type", "amount", "status", "date", "school")
+    list_display = ("id", "description", "transaction_type", "amount", "student", "status", "date", "school")
     list_filter = ("transaction_type", "status")
     search_fields = ("description", "category")
 
