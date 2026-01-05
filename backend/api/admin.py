@@ -20,6 +20,8 @@ from .models import (
     GradeRecord,
     Guardian,
     InventoryItem,
+    InventoryMovement,
+    InventoryRequest,
     Invoice,
     LearningMaterial,
     Message,
@@ -210,6 +212,17 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
 class InventoryItemAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "category", "quantity", "min_quantity", "school")
     list_filter = ("category",)
+
+
+@admin.register(InventoryRequest)
+class InventoryRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "item", "quantity", "status", "requested_by", "created_at")
+    list_filter = ("status",)
+
+
+@admin.register(InventoryMovement)
+class InventoryMovementAdmin(admin.ModelAdmin):
+    list_display = ("id", "item", "movement_type", "quantity", "reason", "created_at")
 
 
 @admin.register(AcademicTarget)

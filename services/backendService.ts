@@ -352,6 +352,34 @@ export const backend = {
     );
     return withPagination(data);
   },
+  async fetchInventoryRequests(params: Record<string, string> = {}) {
+    const query = new URLSearchParams(params).toString();
+    const data = await requestJson<{ data: any[] }>(
+      `/inventory-requests/?page_size=200${query ? `&${query}` : ""}`
+    );
+    return withPagination(data);
+  },
+  async createInventoryRequest(payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>("/inventory-requests/", {
+      method: "POST",
+      body: payload,
+    });
+    return data.data;
+  },
+  async updateInventoryRequest(id: string, payload: Record<string, unknown>) {
+    const data = await requestJson<{ data: any }>(`/inventory-requests/${id}/`, {
+      method: "PATCH",
+      body: payload,
+    });
+    return data.data;
+  },
+  async fetchInventoryMovements(params: Record<string, string> = {}) {
+    const query = new URLSearchParams(params).toString();
+    const data = await requestJson<{ data: any[] }>(
+      `/inventory-movements/?page_size=200${query ? `&${query}` : ""}`
+    );
+    return withPagination(data);
+  },
   async createInventoryItem(payload: Record<string, unknown>) {
     const data = await requestJson<{ data: any }>("/inventory/", {
       method: "POST",

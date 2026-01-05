@@ -34,6 +34,8 @@ from .models import (
     GradeRecord,
     Guardian,
     InventoryItem,
+    InventoryMovement,
+    InventoryRequest,
     Invoice,
     LearningMaterial,
     Message,
@@ -310,7 +312,11 @@ def _calculate_final_grade(config: Optional[GradingConfig], grade1, grade2, reco
             average = (grade1 + grade2) / 2
 
     final_grade = average
-    if recovery_grade is not None and average is not None:
+    if (
+        recovery_grade is not None
+        and average is not None
+        and (config is None or config.recovery_type != GradingConfig.RECOVERY_NONE)
+    ):
         rule = (config.recovery_rule if config else "") or "replace"
         if rule == "average":
             final_grade = (average + recovery_grade) / 2
@@ -633,6 +639,7 @@ def _serialize_grading_config(config: GradingConfig) -> Dict[str, Any]:
         "calculation_method": config.calculation_method,
         "min_passing_grade": str(config.min_passing_grade),
         "weights": config.weights or {},
+        "recovery_type": config.recovery_type,
         "recovery_rule": config.recovery_rule,
         "updated_at": config.updated_at.isoformat(),
     }
@@ -665,6 +672,43 @@ def _serialize_inventory_item(item: InventoryItem) -> Dict[str, Any]:
         "location": item.location,
         "lastUpdated": item.updated_at.isoformat(),
         "created_at": item.created_at.isoformat(),
+    }
+
+
+def _serialize_inventory_request(request_obj: InventoryRequest) -> Dict[str, Any]:
+    requested_by = request_obj.requested_by
+    decided_by = request_obj.decided_by
+    return {
+        "id": request_obj.id,
+        "school_id": request_obj.school_id,
+        "item_id": request_obj.item_id,
+        "item_name": request_obj.item.name if request_obj.item else "",
+        "quantity": request_obj.quantity,
+        "status": request_obj.status,
+        "notes": request_obj.notes,
+        "requested_by": requested_by.user.username if requested_by and requested_by.user else "",
+        "requested_by_id": requested_by.id if requested_by else None,
+        "decided_by": decided_by.user.username if decided_by and decided_by.user else "",
+        "decided_by_id": decided_by.id if decided_by else None,
+        "decided_at": request_obj.decided_at.isoformat() if request_obj.decided_at else None,
+        "created_at": request_obj.created_at.isoformat(),
+    }
+
+
+def _serialize_inventory_movement(movement: InventoryMovement) -> Dict[str, Any]:
+    created_by = movement.created_by
+    return {
+        "id": movement.id,
+        "school_id": movement.school_id,
+        "item_id": movement.item_id,
+        "item_name": movement.item.name if movement.item else "",
+        "movement_type": movement.movement_type,
+        "quantity": movement.quantity,
+        "reason": movement.reason,
+        "related_request_id": movement.related_request_id,
+        "created_by": created_by.user.username if created_by and created_by.user else "",
+        "created_by_id": created_by.id if created_by else None,
+        "created_at": movement.created_at.isoformat(),
     }
 
 
@@ -711,11 +755,13 @@ def _serialize_exam_submission(exam: ExamSubmission) -> Dict[str, Any]:
 
 def _serialize_notice(notice: Notice) -> Dict[str, Any]:
     author_name = ""
+    author_role = ""
     if notice.author and notice.author.user:
         author_name = (
             f"{notice.author.user.first_name} {notice.author.user.last_name}".strip()
             or notice.author.user.username
         )
+        author_role = notice.author.role or ""
     return {
         "id": notice.id,
         "school_id": notice.school_id,
@@ -723,6 +769,7 @@ def _serialize_notice(notice: Notice) -> Dict[str, Any]:
         "content": notice.content,
         "type": notice.notice_type,
         "author": author_name,
+        "author_role": author_role,
         "date": notice.date.isoformat(),
         "created_at": notice.created_at.isoformat(),
     }
@@ -3266,6 +3313,7 @@ def grading_config(request):
             "calculation_method": GradingConfig.METHOD_ARITHMETIC,
             "min_passing_grade": Decimal("6"),
             "weights": {"exam": 50, "activities": 50, "participation": 0},
+            "recovery_type": GradingConfig.RECOVERY_GRADE,
             "recovery_rule": "replace",
         },
     )
@@ -3303,6 +3351,13 @@ def grading_config(request):
         if not isinstance(weights, dict):
             return JsonResponse({"error": "Invalid weights"}, status=400)
         config.weights = weights
+    if "recovery_type" in payload:
+        recovery_error = _validate_choice(
+            payload.get("recovery_type"), GradingConfig.RECOVERY_CHOICES, "recovery_type"
+        )
+        if recovery_error:
+            return recovery_error
+        config.recovery_type = payload.get("recovery_type")
     if "recovery_rule" in payload:
         config.recovery_rule = payload.get("recovery_rule", "")
     config.save()
@@ -4527,6 +4582,7 @@ def inventory_item_detail(request, item_id: int):
         return JsonResponse({"success": True})
 
     payload = _parse_json(request)
+    previous_quantity = item.quantity
     if "name" in payload:
         item.name = payload.get("name")
     if "category" in payload:
@@ -4545,6 +4601,18 @@ def inventory_item_detail(request, item_id: int):
     if "location" in payload:
         item.location = payload.get("location") or ""
     item.save()
+
+    if item.quantity != previous_quantity:
+        delta = item.quantity - previous_quantity
+        profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+        InventoryMovement.objects.create(
+            school=school,
+            item=item,
+            movement_type=InventoryMovement.TYPE_IN if delta > 0 else InventoryMovement.TYPE_OUT,
+            quantity=abs(delta),
+            reason="Ajuste manual",
+            created_by=profile,
+        )
     _log_action(
         auth["user"],
         school,
@@ -4553,6 +4621,170 @@ def inventory_item_detail(request, item_id: int):
         request,
     )
     return JsonResponse({"data": _serialize_inventory_item(item)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def inventory_requests(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+
+    if request.method == "GET":
+        items = InventoryRequest.objects.filter(school=school).select_related(
+            "item",
+            "requested_by",
+            "decided_by",
+            "requested_by__user",
+            "decided_by__user",
+        )
+        if profile and profile.role == UserProfile.ROLE_TEACHER:
+            items = items.filter(requested_by=profile)
+        if "status" in request.GET:
+            items = items.filter(status=request.GET.get("status"))
+        if "item_id" in request.GET:
+            items = items.filter(item_id=request.GET.get("item_id"))
+        return JsonResponse(_paginate(request, items, _serialize_inventory_request))
+
+    if not profile or profile.role not in [
+        UserProfile.ROLE_ADMIN,
+        UserProfile.ROLE_DIRECTOR,
+        UserProfile.ROLE_COORDINATOR,
+        UserProfile.ROLE_TEACHER,
+        UserProfile.ROLE_SUPPORT,
+        UserProfile.ROLE_STAFF,
+    ]:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
+    payload = _parse_json(request)
+    error = _missing_fields(payload, ["item_id", "quantity"])
+    if error:
+        return JsonResponse(error, status=400)
+    item = InventoryItem.objects.filter(id=payload.get("item_id"), school=school).first()
+    if not item:
+        return JsonResponse({"error": "Invalid item"}, status=400)
+    quantity = int(payload.get("quantity") or 0)
+    if quantity <= 0:
+        return JsonResponse({"error": "Invalid quantity"}, status=400)
+
+    request_obj = InventoryRequest.objects.create(
+        school=school,
+        item=item,
+        requested_by=profile,
+        quantity=quantity,
+        notes=payload.get("notes") or "",
+    )
+    _log_action(
+        auth["user"],
+        school,
+        "inventory_request_created",
+        str(request_obj.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_inventory_request(request_obj)}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH"])
+def inventory_request_detail(request, request_id: int):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    request_obj = InventoryRequest.objects.filter(id=request_id, school=school).select_related("item").first()
+    if not request_obj:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    role_error = _require_roles(
+        auth["user"],
+        [UserProfile.ROLE_ADMIN, UserProfile.ROLE_DIRECTOR, UserProfile.ROLE_COORDINATOR],
+    )
+    if role_error:
+        return role_error
+
+    if request_obj.status in [InventoryRequest.STATUS_APPROVED, InventoryRequest.STATUS_REJECTED]:
+        return JsonResponse({"error": "Request already resolved"}, status=400)
+
+    payload = _parse_json(request)
+    if "status" not in payload:
+        return JsonResponse({"error": "Missing status"}, status=400)
+    status = payload.get("status")
+    if status not in [
+        InventoryRequest.STATUS_APPROVED,
+        InventoryRequest.STATUS_REJECTED,
+    ]:
+        return JsonResponse({"error": "Invalid status"}, status=400)
+
+    if status == InventoryRequest.STATUS_APPROVED:
+        item = request_obj.item
+        if item.quantity < request_obj.quantity:
+            return JsonResponse({"error": "Insufficient stock"}, status=400)
+        item.quantity = item.quantity - request_obj.quantity
+        item.save(update_fields=["quantity", "updated_at"])
+        profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+        InventoryMovement.objects.create(
+            school=school,
+            item=item,
+            movement_type=InventoryMovement.TYPE_OUT,
+            quantity=request_obj.quantity,
+            reason="Solicitacao aprovada",
+            related_request=request_obj,
+            created_by=profile,
+        )
+
+    request_obj.status = status
+    request_obj.notes = payload.get("notes", request_obj.notes)
+    request_obj.decided_at = timezone.now()
+    request_obj.decided_by = UserProfile.objects.filter(user=auth["user"], school=school).first()
+    request_obj.save(update_fields=["status", "notes", "decided_at", "decided_by"])
+
+    _log_action(
+        auth["user"],
+        school,
+        "inventory_request_updated",
+        str(request_obj.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_inventory_request(request_obj)})
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def inventory_movements(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_SUPPORT,
+            UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_FINANCE,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    items = InventoryMovement.objects.filter(school=school).select_related("item", "created_by", "created_by__user")
+    if "movement_type" in request.GET:
+        items = items.filter(movement_type=request.GET.get("movement_type"))
+    if "item_id" in request.GET:
+        items = items.filter(item_id=request.GET.get("item_id"))
+    return JsonResponse(_paginate(request, items, _serialize_inventory_movement))
 
 
 @csrf_exempt
@@ -4858,9 +5090,12 @@ def notices(request):
     school, error = _require_profile_school(auth["user"])
     if error:
         return error
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
 
     if request.method == "GET":
         items = Notice.objects.filter(school=school)
+        if profile and profile.role == UserProfile.ROLE_STUDENT:
+            items = items.filter(author__role=UserProfile.ROLE_TEACHER)
         if "type" in request.GET:
             items = items.filter(notice_type=request.GET.get("type"))
         if "date_from" in request.GET:
@@ -4874,7 +5109,12 @@ def notices(request):
 
     role_error = _require_roles(
         auth["user"],
-        [UserProfile.ROLE_ADMIN, UserProfile.ROLE_DIRECTOR, UserProfile.ROLE_COORDINATOR],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
     )
     if role_error:
         return role_error

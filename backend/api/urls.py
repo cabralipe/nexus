@@ -86,6 +86,13 @@ urlpatterns = [
     path("transactions/<int:transaction_id>/", views.transaction_detail, name="transaction_detail"),
     path("inventory/", views.inventory_items, name="inventory_items"),
     path("inventory/<int:item_id>/", views.inventory_item_detail, name="inventory_item_detail"),
+    path("inventory-requests/", views.inventory_requests, name="inventory_requests"),
+    path(
+        "inventory-requests/<int:request_id>/",
+        views.inventory_request_detail,
+        name="inventory_request_detail",
+    ),
+    path("inventory-movements/", views.inventory_movements, name="inventory_movements"),
     path("academic-targets/", views.academic_targets, name="academic_targets"),
     path(
         "academic-targets/<int:target_id>/",

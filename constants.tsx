@@ -161,6 +161,7 @@ export const DEFAULT_GRADING_CONFIG: GradingConfig = {
         activities: 30,
         participation: 10
     },
+    recoveryType: 'grade',
     recoveryRule: 'average'
 };
 
@@ -220,6 +221,12 @@ export const NAV_ITEMS = [
     roles: [UserRole.ADMIN],
   },
   {
+    id: ViewState.TEACHER_INVENTORY,
+    label: 'Materiais',
+    icon: <Package size={20} />,
+    roles: [UserRole.TEACHER],
+  },
+  {
     id: ViewState.COMMUNICATION,
     label: 'Comunicação',
     icon: <MessageCircle size={20} />,
@@ -241,6 +248,6 @@ export const NAV_ITEMS = [
     id: ViewState.SETTINGS,
     label: 'Configurações',
     icon: <Settings size={20} />,
-    roles: [UserRole.ADMIN, UserRole.STUDENT],
+    roles: [UserRole.ADMIN],
   },
 ];

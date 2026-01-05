@@ -11,6 +11,7 @@ import TeacherMonitoring from './components/TeacherMonitoring';
 import AbsenceJustification from './components/AbsenceJustification';
 import PedagogicalCoordination from './components/PedagogicalCoordination';
 import InventoryModule from './components/InventoryModule';
+import TeacherInventoryModule from './components/TeacherInventoryModule';
 import RegistrationModule from './components/RegistrationModule';
 import ClassAllocationModule from './components/ClassAllocationModule';
 import TeacherSubjectsModule from './components/TeacherSubjectsModule';
@@ -30,6 +31,10 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
+  const [viewAsRole, setViewAsRole] = useState<UserRole>(UserRole.ADMIN);
+  const [viewAsUsers, setViewAsUsers] = useState<any[]>([]);
+  const [viewAsUserId, setViewAsUserId] = useState('');
+  const [viewAsLoading, setViewAsLoading] = useState(false);
 
   const roleMapping = useMemo(() => {
     return {
@@ -51,59 +56,32 @@ const App: React.FC = () => {
     setIsSidebarOpen(false);
   };
 
-  const handleRoleSwitch = async (nextRole: UserRole) => {
+  const handleRoleSwitch = (nextRole: UserRole) => {
+    backend.setImpersonation(null);
+    setViewAsRole(nextRole);
+    setViewAsUserId('');
+    setViewAsUsers([]);
     if (nextRole === UserRole.ADMIN) {
-      backend.setImpersonation(null);
       switchRole(UserRole.ADMIN);
       return;
     }
+    setUserRole(UserRole.ADMIN);
+    setCurrentView(ViewState.DASHBOARD);
+  };
 
-    const lookup = window.prompt('Informe o login do usuário para visualizar este perfil:');
-    if (!lookup) return;
-    const roleParam = nextRole === UserRole.TEACHER ? 'teacher' : 'student';
-
-    setAuthLoading(true);
-    setAuthError('');
-    try {
-      const candidates = await backend.fetchUsers({ q: lookup, role: roleParam });
-      if (candidates.length === 0) {
-        window.alert('Nenhum usuário encontrado com esse login.');
-        return;
-      }
-
-      let selected = candidates[0];
-      if (candidates.length > 1) {
-        const options = candidates
-          .map((item: any) => `${item.id} - ${item.username || ''} (${item.email || ''})`)
-          .join('\n');
-        const chosenId = window.prompt(
-          `Encontramos ${candidates.length} usuários. Informe o ID desejado:\n${options}`,
-        );
-        if (!chosenId) return;
-        const match = candidates.find((item: any) => String(item.id) === String(chosenId));
-        if (!match) {
-          window.alert('ID inválido.');
-          return;
-        }
-        selected = match;
-      }
-
-      backend.setImpersonation({
-        id: String(selected.id),
-        role: String(selected.role || roleParam),
-        student_id: selected.student_id ? String(selected.student_id) : null,
-        username: selected.username,
-        email: selected.email,
-      });
-
-      switchRole(nextRole);
-    } catch (error: any) {
-      const message = error?.message || 'Falha ao localizar usuário.';
-      setAuthError(message);
-      window.alert(message);
-    } finally {
-      setAuthLoading(false);
-    }
+  const handleViewAsUser = (userId: string) => {
+    setViewAsUserId(userId);
+    const selected = viewAsUsers.find((user: any) => String(user.id) === String(userId));
+    if (!selected) return;
+    const roleParam = viewAsRole === UserRole.TEACHER ? 'teacher' : 'student';
+    backend.setImpersonation({
+      id: String(selected.id),
+      role: String(selected.role || roleParam),
+      student_id: selected.student_id ? String(selected.student_id) : null,
+      username: selected.username,
+      email: selected.email,
+    });
+    switchRole(viewAsRole);
   };
 
   const renderContent = () => {
@@ -131,6 +109,9 @@ const App: React.FC = () => {
     }
     if (currentView === ViewState.INVENTORY) {
       return <InventoryModule />;
+    }
+    if (currentView === ViewState.TEACHER_INVENTORY) {
+      return <TeacherInventoryModule />;
     }
     if (currentView === ViewState.REGISTRATION) {
       return <RegistrationModule />;
@@ -184,8 +165,12 @@ const App: React.FC = () => {
         if (viewAs && String(me.role || '').toLowerCase() === 'admin') {
           const viewRole = roleMapping[String(viewAs.role || '').toLowerCase()] || UserRole.ADMIN;
           setUserRole(viewRole);
+          setViewAsRole(viewRole);
+          setViewAsUserId(String(viewAs.id || ''));
         } else {
           setUserRole(normalizedRole);
+          setViewAsRole(normalizedRole);
+          setViewAsUserId('');
         }
         setAuthRole(String(me.role || '').toLowerCase() || null);
         if (me.school && me.school.logo) {
@@ -205,6 +190,24 @@ const App: React.FC = () => {
     };
     bootstrap();
   }, [roleMapping]);
+
+  useEffect(() => {
+    if (authRole !== 'admin') return;
+    if (viewAsRole === UserRole.ADMIN) return;
+    const roleParam = viewAsRole === UserRole.TEACHER ? 'teacher' : 'student';
+    const loadUsers = async () => {
+      setViewAsLoading(true);
+      try {
+        const users = await backend.fetchUsers({ role: roleParam });
+        setViewAsUsers(users);
+      } catch (error: any) {
+        setAuthError(error?.message || 'Falha ao carregar usuários.');
+      } finally {
+        setViewAsLoading(false);
+      }
+    };
+    loadUsers();
+  }, [authRole, viewAsRole]);
 
   const allowedViews = useMemo(() => {
     return new Set(
@@ -270,6 +273,9 @@ const App: React.FC = () => {
           setIsAuthenticated(false);
           setAuthError('');
           setAuthRole(null);
+          setViewAsRole(UserRole.ADMIN);
+          setViewAsUserId('');
+          setViewAsUsers([]);
           setIsSidebarOpen(false);
         }}
         isOpen={isSidebarOpen}
@@ -302,15 +308,32 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             {/* Role Switcher for Demo */}
             {authRole === 'admin' && (
-              <select
-                value={userRole}
-                onChange={(e) => handleRoleSwitch(e.target.value as UserRole)}
-                className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded border border-slate-700 focus:outline-none"
-              >
-                <option value={UserRole.ADMIN}>Ver como Admin</option>
-                <option value={UserRole.TEACHER}>Ver como Professor</option>
-                <option value={UserRole.STUDENT}>Ver como Aluno</option>
-              </select>
+              <div className="flex items-center gap-2">
+                <select
+                  value={viewAsRole}
+                  onChange={(e) => handleRoleSwitch(e.target.value as UserRole)}
+                  className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded border border-slate-700 focus:outline-none"
+                >
+                  <option value={UserRole.ADMIN}>Ver como Admin</option>
+                  <option value={UserRole.TEACHER}>Ver como Professor</option>
+                  <option value={UserRole.STUDENT}>Ver como Aluno</option>
+                </select>
+                {viewAsRole !== UserRole.ADMIN && (
+                  <select
+                    value={viewAsUserId}
+                    onChange={(e) => handleViewAsUser(e.target.value)}
+                    className="text-xs bg-white text-slate-700 px-3 py-1.5 rounded border border-slate-200 focus:outline-none min-w-[220px]"
+                    disabled={viewAsLoading}
+                  >
+                    <option value="">{viewAsLoading ? 'Carregando...' : 'Selecionar usuário'}</option>
+                    {viewAsUsers.map((user: any) => (
+                      <option key={user.id} value={user.id}>
+                        {user.username || user.email || `Usuário ${user.id}`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
             )}
 
             <button className="relative p-2 hover:bg-slate-100 rounded-full transition-colors">

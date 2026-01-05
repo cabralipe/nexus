@@ -13,6 +13,7 @@ const CommunicationModule: React.FC = () => {
     const [notices, setNotices] = useState<any[]>([]);
     const [students, setStudents] = useState<any[]>([]);
     const [conversations, setConversations] = useState<any[]>([]);
+    const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
     // Chat State
     const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
@@ -23,12 +24,18 @@ const CommunicationModule: React.FC = () => {
     useEffect(() => {
         const loadData = async () => {
             try {
-                const [noticesData, studentsData, conversationsData] = await Promise.all([
+                const [me, noticesData, studentsData, conversationsData] = await Promise.all([
+                    backend.fetchMe(),
                     backend.fetchNotices(),
                     backend.fetchStudents(),
                     backend.fetchConversations(),
                 ]);
-                setNotices(noticesData);
+                const role = String(me.role || '').toLowerCase();
+                setCurrentUserRole(role || null);
+                const filteredNotices = role === 'student'
+                    ? noticesData.filter((notice: any) => String(notice.author_role || '').toLowerCase() === 'teacher')
+                    : noticesData;
+                setNotices(filteredNotices);
                 setStudents(
                     studentsData.map((student: any) => ({
                         id: String(student.id),
@@ -121,11 +128,13 @@ const CommunicationModule: React.FC = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
                     {/* Notices Feed */}
                     <div className="lg:col-span-2 space-y-4">
-                         <div className="flex justify-end">
-                            <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium">
-                                <Plus size={18} /> Novo Comunicado
-                            </button>
-                         </div>
+                         {currentUserRole !== 'student' && (
+                            <div className="flex justify-end">
+                                <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium">
+                                    <Plus size={18} /> Novo Comunicado
+                                </button>
+                             </div>
+                         )}
                         {notices.map((notice) => {
                             const normalizedType = String(notice.type || '').toLowerCase();
                             const label = normalizedType === 'urgent' ? 'Urgent' : normalizedType === 'academic' ? 'Academic' : 'General';
@@ -163,44 +172,46 @@ const CommunicationModule: React.FC = () => {
                     </div>
 
                     {/* AI Composer */}
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 h-fit">
-                        <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                            <MessageCircle size={20} className="text-indigo-600" />
-                            Assistente de Redação
-                        </h3>
-                        <p className="text-sm text-slate-500 mb-4">
-                            Use a IA para redigir comunicados claros e profissionais para pais e alunos.
-                        </p>
-                        
-                        <div className="space-y-3">
-                            <input 
-                                type="text" 
-                                placeholder="Sobre o que é o comunicado?" 
-                                className="w-full p-3 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-                                value={topic}
-                                onChange={(e) => setTopic(e.target.value)}
-                            />
-                            <button 
-                                onClick={handleDraftNotice}
-                                disabled={isWriting || !topic}
-                                className="w-full bg-indigo-50 text-indigo-700 font-medium py-2 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50"
-                            >
-                                {isWriting ? 'Escrevendo...' : 'Gerar Rascunho'}
-                            </button>
-                        </div>
-
-                        {generatedNotice && (
-                            <div className="mt-4 pt-4 border-t border-slate-100">
-                                <div className="text-xs font-bold text-slate-400 uppercase mb-2">Sugestão da IA</div>
-                                <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-700 h-64 overflow-y-auto markdown-content border border-slate-200">
-                                    <div dangerouslySetInnerHTML={{__html: generatedNotice.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')}} />
-                                </div>
-                                <button className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-lg text-sm hover:bg-indigo-700">
-                                    Usar este texto
+                    {currentUserRole !== 'student' && (
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 h-fit">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                <MessageCircle size={20} className="text-indigo-600" />
+                                Assistente de Redação
+                            </h3>
+                            <p className="text-sm text-slate-500 mb-4">
+                                Use a IA para redigir comunicados claros e profissionais para pais e alunos.
+                            </p>
+                            
+                            <div className="space-y-3">
+                                <input 
+                                    type="text" 
+                                    placeholder="Sobre o que é o comunicado?" 
+                                    className="w-full p-3 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={topic}
+                                    onChange={(e) => setTopic(e.target.value)}
+                                />
+                                <button 
+                                    onClick={handleDraftNotice}
+                                    disabled={isWriting || !topic}
+                                    className="w-full bg-indigo-50 text-indigo-700 font-medium py-2 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50"
+                                >
+                                    {isWriting ? 'Escrevendo...' : 'Gerar Rascunho'}
                                 </button>
                             </div>
-                        )}
-                    </div>
+
+                            {generatedNotice && (
+                                <div className="mt-4 pt-4 border-t border-slate-100">
+                                    <div className="text-xs font-bold text-slate-400 uppercase mb-2">Sugestão da IA</div>
+                                    <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-700 h-64 overflow-y-auto markdown-content border border-slate-200">
+                                        <div dangerouslySetInnerHTML={{__html: generatedNotice.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')}} />
+                                    </div>
+                                    <button className="w-full mt-2 bg-indigo-600 text-white py-2 rounded-lg text-sm hover:bg-indigo-700">
+                                        Usar este texto
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             ) : (
                 <div className="grid grid-cols-12 gap-6 h-[calc(100vh-200px)] animate-fade-in bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">

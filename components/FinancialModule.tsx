@@ -16,16 +16,20 @@ const FinancialModule: React.FC = () => {
     // Expenses State
     const [invoices, setInvoices] = useState<any[]>([]);
     const [expenses, setExpenses] = useState<any[]>([]);
+    const [incomes, setIncomes] = useState<any[]>([]);
+    const [newIncome, setNewIncome] = useState({ description: '', category: '', amount: '', date: '' });
+    const [isAddingIncome, setIsAddingIncome] = useState(false);
     const [newExpense, setNewExpense] = useState({ description: '', category: '', amount: '', date: '' });
     const [isAddingExpense, setIsAddingExpense] = useState(false);
 
     useEffect(() => {
         const loadFinancial = async () => {
             try {
-                const [invoiceData, studentsData, expenseData, cashflowData] = await Promise.all([
+                const [invoiceData, studentsData, expenseData, incomeData, cashflowData] = await Promise.all([
                     backend.fetchInvoices(),
                     backend.fetchStudents(),
                     backend.fetchTransactions({ type: 'expense' }),
+                    backend.fetchTransactions({ type: 'income' }),
                     backend.fetchCashflow(),
                 ]);
                 const studentMap = new Map(
@@ -50,6 +54,16 @@ const FinancialModule: React.FC = () => {
                         category: tx.category,
                         amount: Number(tx.amount),
                         type: 'expense' as const,
+                        date: tx.date,
+                    }))
+                );
+                setIncomes(
+                    incomeData.map((tx: any) => ({
+                        id: String(tx.id),
+                        description: tx.description,
+                        category: tx.category,
+                        amount: Number(tx.amount),
+                        type: 'income' as const,
                         date: tx.date,
                     }))
                 );
@@ -95,6 +109,33 @@ const FinancialModule: React.FC = () => {
             setNewExpense({ description: '', category: '', amount: '', date: '' });
         } catch (error) {
             console.error("Failed to add expense", error);
+        }
+    };
+
+    const handleAddIncome = async () => {
+        if(!newIncome.description || !newIncome.amount) return;
+        const income = {
+            id: Math.random().toString(),
+            description: newIncome.description,
+            category: newIncome.category || 'Geral',
+            amount: parseFloat(newIncome.amount),
+            type: 'income' as const,
+            date: newIncome.date || new Date().toISOString().split('T')[0]
+        };
+        try {
+            const created = await backend.createTransaction({
+                description: income.description,
+                category: income.category,
+                amount: income.amount,
+                type: 'income',
+                status: 'received',
+                date: income.date,
+            });
+            setIncomes([{ ...income, id: String(created.id) }, ...incomes]);
+            setIsAddingIncome(false);
+            setNewIncome({ description: '', category: '', amount: '', date: '' });
+        } catch (error) {
+            console.error("Failed to add income", error);
         }
     };
 
@@ -193,6 +234,83 @@ const FinancialModule: React.FC = () => {
 
                     {/* Collection Action Panel */}
                     <div className="space-y-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-slate-800">Receitas Avulsas</h3>
+                                <button
+                                    onClick={() => setIsAddingIncome(true)}
+                                    className="flex items-center gap-2 bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-700"
+                                >
+                                    <Plus size={16} /> Nova Receita
+                                </button>
+                            </div>
+                            <div className="space-y-3">
+                                {incomes.length === 0 ? (
+                                    <p className="text-sm text-slate-500">Nenhuma receita registrada.</p>
+                                ) : (
+                                    incomes.slice(0, 5).map((income) => (
+                                        <div key={income.id} className="flex justify-between items-center border border-slate-100 rounded-lg p-3">
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-800">{income.description}</p>
+                                                <p className="text-xs text-slate-400">{new Date(income.date).toLocaleDateString('pt-BR')}</p>
+                                            </div>
+                                            <span className="text-sm font-bold text-emerald-600">
+                                                + R$ {income.amount.toLocaleString('pt-BR')}
+                                            </span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {isAddingIncome && (
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 animate-fade-in">
+                                <h3 className="font-bold text-slate-800 mb-4">Registrar Receita</h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-xs font-semibold text-slate-600">Descrição</label>
+                                        <input
+                                            type="text" className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                            value={newIncome.description} onChange={e => setNewIncome({...newIncome, description: e.target.value})}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-xs font-semibold text-slate-600">Valor (R$)</label>
+                                            <input
+                                                type="number" className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                                value={newIncome.amount} onChange={e => setNewIncome({...newIncome, amount: e.target.value})}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-semibold text-slate-600">Categoria</label>
+                                            <select
+                                                className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                                value={newIncome.category} onChange={e => setNewIncome({...newIncome, category: e.target.value})}
+                                            >
+                                                <option value="">Selecione...</option>
+                                                <option value="Tuition">Mensalidade</option>
+                                                <option value="Services">Serviços</option>
+                                                <option value="Donations">Doações</option>
+                                                <option value="Other">Outros</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-slate-600">Data de Recebimento</label>
+                                        <input
+                                            type="date" className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                            value={newIncome.date} onChange={e => setNewIncome({...newIncome, date: e.target.value})}
+                                        />
+                                    </div>
+                                    <div className="flex gap-2 pt-2">
+                                        <button onClick={() => setIsAddingIncome(false)} className="flex-1 py-2 text-sm text-slate-600 bg-slate-100 rounded hover:bg-slate-200">Cancelar</button>
+                                        <button onClick={handleAddIncome} className="flex-1 py-2 text-sm text-white bg-emerald-600 rounded hover:bg-emerald-700 font-medium">Salvar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="bg-rose-50 border border-rose-100 p-6 rounded-xl">
                             <h3 className="font-bold text-rose-800 mb-2 flex items-center gap-2">
                                 <AlertTriangle size={20} />

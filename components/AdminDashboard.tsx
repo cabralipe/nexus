@@ -54,6 +54,7 @@ const AdminDashboard: React.FC = () => {
                         calculationMethod: gradingData.calculation_method || gradingData.calculationMethod,
                         minPassingGrade: Number(gradingData.min_passing_grade || gradingData.minPassingGrade || 6),
                         weights: gradingData.weights || { exam: 60, activities: 30, participation: 10 },
+                        recoveryType: gradingData.recovery_type || DEFAULT_GRADING_CONFIG.recoveryType,
                         recoveryRule: gradingData.recovery_rule || gradingData.recoveryRule || '',
                     });
                 }
@@ -108,6 +109,7 @@ const AdminDashboard: React.FC = () => {
                 calculation_method: gradingConfig.calculationMethod,
                 min_passing_grade: gradingConfig.minPassingGrade,
                 weights: gradingConfig.weights,
+                recovery_type: gradingConfig.recoveryType,
                 recovery_rule: gradingConfig.recoveryRule,
             });
         } catch (error) {
@@ -353,6 +355,36 @@ const AdminDashboard: React.FC = () => {
                                 <p className="text-xs text-slate-500 mt-2">
                                     Defina se a nota final do bimestre será uma média simples de todas as avaliações ou se haverá pesos específicos por tipo de atividade.
                                 </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">Tipo de Recuperação</label>
+                                <select
+                                    value={gradingConfig.recoveryType}
+                                    onChange={(e) => setGradingConfig({ ...gradingConfig, recoveryType: e.target.value as GradingConfig['recoveryType'] })}
+                                    className="w-full border border-slate-200 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                >
+                                    <option value="none">Sem recuperação</option>
+                                    <option value="grade">Recuperação por nota</option>
+                                    <option value="exam">Recuperação por prova</option>
+                                </select>
+                                <p className="text-xs text-slate-500 mt-2">
+                                    Defina se a recuperação será aplicada como nota ou como prova extra.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-2">Aplicação da Recuperação</label>
+                                <select
+                                    value={gradingConfig.recoveryRule}
+                                    onChange={(e) => setGradingConfig({ ...gradingConfig, recoveryRule: e.target.value })}
+                                    className="w-full border border-slate-200 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                    disabled={gradingConfig.recoveryType === 'none'}
+                                >
+                                    <option value="replace">Substitui a menor nota do período</option>
+                                    <option value="average">Faz média com a nota original</option>
+                                    <option value="max">Prevalece a maior nota entre as duas</option>
+                                </select>
                             </div>
                         </div>
                     </div>

@@ -319,6 +319,63 @@ class InventoryItem(models.Model):
         return self.name
 
 
+class InventoryRequest(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pendente"),
+        (STATUS_APPROVED, "Aprovada"),
+        (STATUS_REJECTED, "Rejeitada"),
+    ]
+
+    school = models.ForeignKey(School, on_delete=models.CASCADE)
+    item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE)
+    requested_by = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)
+    quantity = models.PositiveIntegerField(default=1)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    notes = models.TextField(blank=True)
+    decided_by = models.ForeignKey(
+        UserProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name="inventory_decisions"
+    )
+    decided_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.item} - {self.quantity}"
+
+
+class InventoryMovement(models.Model):
+    TYPE_IN = "in"
+    TYPE_OUT = "out"
+
+    TYPE_CHOICES = [
+        (TYPE_IN, "Entrada"),
+        (TYPE_OUT, "Saida"),
+    ]
+
+    school = models.ForeignKey(School, on_delete=models.CASCADE)
+    item = models.ForeignKey(InventoryItem, on_delete=models.CASCADE)
+    movement_type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    quantity = models.PositiveIntegerField(default=1)
+    reason = models.CharField(max_length=120, blank=True)
+    related_request = models.ForeignKey(
+        InventoryRequest, on_delete=models.SET_NULL, null=True, blank=True
+    )
+    created_by = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.item} - {self.movement_type}"
+
+
 class GradeRecord(models.Model):
     student = models.ForeignKey(Student, on_delete=models.CASCADE)
     classroom = models.ForeignKey(Classroom, on_delete=models.CASCADE)
@@ -464,6 +521,9 @@ class GradingConfig(models.Model):
     SYSTEM_TRIMESTRAL = "trimestral"
     METHOD_ARITHMETIC = "arithmetic"
     METHOD_WEIGHTED = "weighted"
+    RECOVERY_NONE = "none"
+    RECOVERY_GRADE = "grade"
+    RECOVERY_EXAM = "exam"
 
     SYSTEM_CHOICES = [
         (SYSTEM_BIMESTRAL, "Bimestral"),
@@ -473,6 +533,11 @@ class GradingConfig(models.Model):
         (METHOD_ARITHMETIC, "Media aritmetica"),
         (METHOD_WEIGHTED, "Media ponderada"),
     ]
+    RECOVERY_CHOICES = [
+        (RECOVERY_NONE, "Sem recuperacao"),
+        (RECOVERY_GRADE, "Recuperacao por nota"),
+        (RECOVERY_EXAM, "Recuperacao por prova"),
+    ]
 
     school = models.OneToOneField(School, on_delete=models.CASCADE)
     system = models.CharField(max_length=20, choices=SYSTEM_CHOICES, default=SYSTEM_BIMESTRAL)
@@ -481,6 +546,9 @@ class GradingConfig(models.Model):
     )
     min_passing_grade = models.DecimalField(max_digits=5, decimal_places=2, default=6)
     weights = models.JSONField(default=dict, blank=True)
+    recovery_type = models.CharField(
+        max_length=20, choices=RECOVERY_CHOICES, default=RECOVERY_GRADE
+    )
     recovery_rule = models.CharField(max_length=50, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -44,6 +44,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ onLogoUpdate }) => {
                         calculationMethod: gradingConfig.calculation_method,
                         minPassingGrade: Number(gradingConfig.min_passing_grade),
                         weights: gradingConfig.weights || DEFAULT_GRADING_CONFIG.weights,
+                        recoveryType: gradingConfig.recovery_type || DEFAULT_GRADING_CONFIG.recoveryType,
                         recoveryRule: gradingConfig.recovery_rule || DEFAULT_GRADING_CONFIG.recoveryRule,
                     });
                 }
@@ -95,6 +96,7 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ onLogoUpdate }) => {
                 calculation_method: config.calculationMethod,
                 min_passing_grade: config.minPassingGrade,
                 weights: config.weights,
+                recovery_type: config.recoveryType,
                 recovery_rule: config.recoveryRule,
             });
             if (schoolId) {
@@ -299,11 +301,27 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ onLogoUpdate }) => {
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700">Substituição de Nota</label>
+                                    <label className="text-sm font-medium text-slate-700">Tipo de Recuperação</label>
+                                    <p className="text-xs text-slate-500">Defina se a recuperação será por nota ou por prova.</p>
+                                </div>
+                                <select
+                                    className="w-full border border-slate-200 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={config.recoveryType}
+                                    onChange={(e) => setConfig({ ...config, recoveryType: e.target.value as GradingConfig['recoveryType'] })}
+                                >
+                                    <option value="none">Sem recuperação</option>
+                                    <option value="grade">Recuperação por nota</option>
+                                    <option value="exam">Recuperação por prova</option>
+                                </select>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium text-slate-700">Aplicação da Recuperação</label>
                                     <p className="text-xs text-slate-500">Como a nota de recuperação deve ser aplicada no boletim?</p>
                                 </div>
                                 <select
                                     className="w-full border border-slate-200 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-indigo-500"
+                                    value={config.recoveryRule}
+                                    onChange={(e) => setConfig({ ...config, recoveryRule: e.target.value })}
+                                    disabled={config.recoveryType === 'none'}
                                 >
                                     <option value="replace">Substitui a menor nota do período</option>
                                     <option value="average">Faz média com a nota original</option>
