@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { MessageCircle, Bell, Plus, Search, User, Send as SendIcon } from 'lucide-react';
 import { generateInsight } from '../services/geminiService';
 import { backend } from '../services/backendService';
@@ -54,7 +55,7 @@ const CommunicationModule: React.FC = () => {
 
     const handleDraftNotice = async () => {
         setIsWriting(true);
-        const prompt = `Write a formal school announcement about "${topic}". Include a polite greeting, the main details, and a closing. Format as Markdown.`;
+        const prompt = `Escreva um comunicado escolar formal sobre "${topic}". Inclua uma saudação educada, os detalhes principais e um encerramento. Formate como Markdown.`;
         const result = await generateInsight(prompt);
         setGeneratedNotice(result);
         setIsWriting(false);
@@ -125,13 +126,13 @@ const CommunicationModule: React.FC = () => {
                     <p className="text-slate-500">Mural de avisos e chat direto com responsáveis.</p>
                 </div>
                 <div className="flex bg-slate-100 p-1 rounded-lg">
-                    <button 
+                    <button
                         onClick={() => setActiveTab('notices')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'notices' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         <Bell size={16} /> Mural de Avisos
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('chat')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'chat' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
@@ -144,47 +145,46 @@ const CommunicationModule: React.FC = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
                     {/* Notices Feed */}
                     <div className="lg:col-span-2 space-y-4">
-                         {currentUserRole !== 'student' && (
+                        {currentUserRole !== 'student' && (
                             <div className="flex justify-end">
                                 <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium">
                                     <Plus size={18} /> Novo Comunicado
                                 </button>
-                             </div>
-                         )}
+                            </div>
+                        )}
                         {notices.map((notice) => {
                             const normalizedType = String(notice.type || '').toLowerCase();
                             const label = normalizedType === 'urgent' ? 'Urgent' : normalizedType === 'academic' ? 'Academic' : 'General';
                             return (
-                            <div key={notice.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex gap-4">
-                                <div className={`mt-1 p-3 rounded-full h-fit ${
-                                    label === 'Urgent' ? 'bg-rose-100 text-rose-600' :
-                                    label === 'Academic' ? 'bg-blue-100 text-blue-600' :
-                                    'bg-slate-100 text-slate-600'
-                                }`}>
-                                    <Bell size={20} />
-                                </div>
-                                <div className="flex-1">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <div>
-                                            <h3 className="font-bold text-slate-800 text-lg">{notice.title}</h3>
-                                            <span className="text-xs text-slate-400">
-                                                Enviado por {notice.author} • {new Date(notice.date).toLocaleDateString('pt-BR')}
+                                <div key={notice.id} className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex gap-4">
+                                    <div className={`mt-1 p-3 rounded-full h-fit ${label === 'Urgent' ? 'bg-rose-100 text-rose-600' :
+                                        label === 'Academic' ? 'bg-blue-100 text-blue-600' :
+                                            'bg-slate-100 text-slate-600'
+                                        }`}>
+                                        <Bell size={20} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <h3 className="font-bold text-slate-800 text-lg">{notice.title}</h3>
+                                                <span className="text-xs text-slate-400">
+                                                    Enviado por {notice.author} • {new Date(notice.date).toLocaleDateString('pt-BR')}
+                                                </span>
+                                            </div>
+                                            <span className={`text-xs px-2 py-1 rounded font-medium border ${label === 'Urgent' ? 'border-rose-200 text-rose-700' :
+                                                label === 'Academic' ? 'border-blue-200 text-blue-700' :
+                                                    'border-slate-200 text-slate-700'
+                                                }`}>
+                                                {label}
                                             </span>
                                         </div>
-                                        <span className={`text-xs px-2 py-1 rounded font-medium border ${
-                                             label === 'Urgent' ? 'border-rose-200 text-rose-700' :
-                                             label === 'Academic' ? 'border-blue-200 text-blue-700' :
-                                             'border-slate-200 text-slate-700'
-                                        }`}>
-                                            {label}
-                                        </span>
+                                        <p className="text-slate-600 text-sm leading-relaxed">
+                                            {notice.content}
+                                        </p>
                                     </div>
-                                    <p className="text-slate-600 text-sm leading-relaxed">
-                                        {notice.content}
-                                    </p>
                                 </div>
-                            </div>
-                        )})}
+                            )
+                        })}
                     </div>
 
                     {/* AI Composer */}
@@ -197,16 +197,16 @@ const CommunicationModule: React.FC = () => {
                             <p className="text-sm text-slate-500 mb-4">
                                 Use a IA para redigir comunicados claros e profissionais para pais e alunos.
                             </p>
-                            
+
                             <div className="space-y-3">
-                                <input 
-                                    type="text" 
-                                    placeholder="Sobre o que é o comunicado?" 
+                                <input
+                                    type="text"
+                                    placeholder="Sobre o que é o comunicado?"
                                     className="w-full p-3 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                                     value={topic}
                                     onChange={(e) => setTopic(e.target.value)}
                                 />
-                                <button 
+                                <button
                                     onClick={handleDraftNotice}
                                     disabled={isWriting || !topic}
                                     className="w-full bg-indigo-50 text-indigo-700 font-medium py-2 rounded-lg hover:bg-indigo-100 transition-colors disabled:opacity-50"
@@ -219,7 +219,18 @@ const CommunicationModule: React.FC = () => {
                                 <div className="mt-4 pt-4 border-t border-slate-100">
                                     <div className="text-xs font-bold text-slate-400 uppercase mb-2">Sugestão da IA</div>
                                     <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-700 h-64 overflow-y-auto markdown-content border border-slate-200">
-                                        <div dangerouslySetInnerHTML={{__html: generatedNotice.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')}} />
+                                        <ReactMarkdown
+                                            components={{
+                                                strong: ({ node, ...props }) => <span className="font-bold text-slate-800" {...props} />,
+                                                h1: ({ node, ...props }) => <h3 className="text-sm font-bold mb-2 text-slate-800" {...props} />,
+                                                h2: ({ node, ...props }) => <h4 className="text-xs font-bold mb-2 text-slate-800" {...props} />,
+                                                ul: ({ node, ...props }) => <ul className="list-disc pl-4 space-y-1 mb-2" {...props} />,
+                                                li: ({ node, ...props }) => <li className="mb-0.5" {...props} />,
+                                                p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                                            }}
+                                        >
+                                            {generatedNotice}
+                                        </ReactMarkdown>
                                     </div>
                                     <button
                                         onClick={handleUseGeneratedNotice}
@@ -244,20 +255,20 @@ const CommunicationModule: React.FC = () => {
                         </div>
                         <div className="flex-1 overflow-y-auto">
                             {students.map(student => (
-                                <button 
+                                <button
                                     key={student.id}
                                     onClick={() => handleSelectContact(student.id)}
                                     className={`w-full text-left p-4 hover:bg-slate-50 border-b border-slate-50 last:border-0 flex items-center gap-3 transition-colors ${selectedContactId === student.id ? 'bg-indigo-50' : ''}`}
                                 >
                                     <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold">
-                                        {student.name.substring(0,2).toUpperCase()}
+                                        {student.name.substring(0, 2).toUpperCase()}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <div className="flex justify-between items-center mb-1">
                                             <h4 className="font-semibold text-sm text-slate-800 truncate">{student.name}</h4>
                                             <span className="text-[10px] text-slate-400">10:05</span>
                                         </div>
-                                            <p className="text-xs text-slate-500 truncate">Responsável: Pai/Mãe</p>
+                                        <p className="text-xs text-slate-500 truncate">Responsável: Pai/Mãe</p>
                                     </div>
                                 </button>
                             ))}
@@ -271,7 +282,7 @@ const CommunicationModule: React.FC = () => {
                                 <div className="p-4 bg-white border-b border-slate-100 flex justify-between items-center">
                                     <div className="flex items-center gap-3">
                                         <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
-                                            {students.find(s => s.id === selectedContactId)?.name.substring(0,2).toUpperCase()}
+                                            {students.find(s => s.id === selectedContactId)?.name.substring(0, 2).toUpperCase()}
                                         </div>
                                         <div>
                                             <h3 className="font-bold text-slate-800 text-sm">{students.find(s => s.id === selectedContactId)?.name}</h3>
@@ -294,15 +305,15 @@ const CommunicationModule: React.FC = () => {
                                     )}
                                 </div>
                                 <div className="p-4 bg-white border-t border-slate-100 flex gap-2">
-                                    <input 
-                                        type="text" 
+                                    <input
+                                        type="text"
                                         className="flex-1 border border-slate-200 rounded-lg px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
                                         placeholder="Digite sua mensagem..."
                                         value={chatMessage}
                                         onChange={(e) => setChatMessage(e.target.value)}
                                         onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
                                     />
-                                    <button 
+                                    <button
                                         onClick={handleSendMessage}
                                         className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition-colors"
                                     >
