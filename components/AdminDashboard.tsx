@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { DollarSign, Users, AlertTriangle, TrendingUp, Sparkles, FileText, Printer, ArrowLeft, Sliders, Calculator, Save, Settings, CheckCircle } from 'lucide-react';
 import { StatCard } from './StatCard';
@@ -176,7 +177,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialView = 'overview
             totalStudents: dashboard?.counts?.students || 0,
             delinquencyRate: `${dashboard?.invoices?.delinquency_rate || 0}%`,
         });
-        const result = await analyzeFinancialHealth(summary);
+        const result = await analyzeFinancialHealth(
+            `Analise os dados desta escola e forneça 3 insights estratégicos. Responda em Português do Brasil: ${summary}`
+        );
         setInsight(result);
         setLoadingAi(false);
     };
@@ -294,7 +297,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialView = 'overview
                                 <Sparkles size={16} /> Análise Inteligente
                             </h4>
                             <div className="prose prose-sm text-indigo-900 markdown-content">
-                                <div dangerouslySetInnerHTML={{ __html: insight.replace(/\n/g, '<br/>') }} />
+                                <ReactMarkdown
+                                    components={{
+                                        strong: ({ node, ...props }) => <span className="font-bold text-indigo-800" {...props} />,
+                                        h1: ({ node, ...props }) => <h3 className="text-lg font-bold mb-2 text-indigo-900" {...props} />,
+                                        h2: ({ node, ...props }) => <h4 className="text-base font-bold mb-2 text-indigo-900" {...props} />,
+                                        ul: ({ node, ...props }) => <ul className="list-disc pl-4 space-y-1 mb-2" {...props} />,
+                                        li: ({ node, ...props }) => <li className="mb-0.5" {...props} />,
+                                        p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                                    }}
+                                >
+                                    {insight}
+                                </ReactMarkdown>
                             </div>
                         </div>
                     )}
@@ -614,7 +628,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialView = 'overview
                                             : plan.status === 'Rejected'
                                                 ? 'bg-rose-100 text-rose-700'
                                                 : 'bg-amber-100 text-amber-700'
-                                        }`}>
+                                            }`}>
                                             {plan.status === 'Approved' ? 'Aprovado' : plan.status === 'Rejected' ? 'Reprovado' : 'Pendente'}
                                         </span>
                                     </div>
@@ -641,7 +655,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ initialView = 'overview
                                         : selectedLessonPlan.status === 'Rejected'
                                             ? 'bg-rose-100 text-rose-700'
                                             : 'bg-amber-100 text-amber-700'
-                                    }`}>
+                                        }`}>
                                         {selectedLessonPlan.status === 'Approved' ? 'Aprovado' : selectedLessonPlan.status === 'Rejected' ? 'Reprovado' : 'Pendente'}
                                     </span>
                                 </div>
