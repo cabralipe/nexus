@@ -11,8 +11,10 @@ import TeacherMonitoring from './components/TeacherMonitoring';
 import AbsenceJustification from './components/AbsenceJustification';
 import PedagogicalCoordination from './components/PedagogicalCoordination';
 import InventoryModule from './components/InventoryModule';
+import TeacherInventoryModule from './components/TeacherInventoryModule';
 import RegistrationModule from './components/RegistrationModule';
 import ClassAllocationModule from './components/ClassAllocationModule';
+import TeacherSubjectsModule from './components/TeacherSubjectsModule';
 import ScheduleModule from './components/ScheduleModule';
 import LoginScreen from './components/LoginScreen';
 import { UserRole, ViewState } from './types';
@@ -30,6 +32,11 @@ const App: React.FC = () => {
   const [authLoading, setAuthLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
+  const [viewAsRole, setViewAsRole] = useState<UserRole>(UserRole.ADMIN);
+  const [viewAsUsers, setViewAsUsers] = useState<any[]>([]);
+  const [viewAsUserId, setViewAsUserId] = useState('');
+  const [viewAsLoading, setViewAsLoading] = useState(false);
+  const [pendingLessonPlansCount, setPendingLessonPlansCount] = useState(0);
 
   const roleMapping = useMemo(() => {
     return {
@@ -62,6 +69,34 @@ const App: React.FC = () => {
     setIsSidebarOpen(false);
   };
 
+  const handleRoleSwitch = (nextRole: UserRole) => {
+    backend.setImpersonation(null);
+    setViewAsRole(nextRole);
+    setViewAsUserId('');
+    setViewAsUsers([]);
+    if (nextRole === UserRole.ADMIN) {
+      switchRole(UserRole.ADMIN);
+      return;
+    }
+    setUserRole(UserRole.ADMIN);
+    setCurrentView(ViewState.DASHBOARD);
+  };
+
+  const handleViewAsUser = (userId: string) => {
+    setViewAsUserId(userId);
+    const selected = viewAsUsers.find((user: any) => String(user.id) === String(userId));
+    if (!selected) return;
+    const roleParam = viewAsRole === UserRole.TEACHER ? 'teacher' : 'student';
+    backend.setImpersonation({
+      id: String(selected.id),
+      role: String(selected.role || roleParam),
+      student_id: selected.student_id ? String(selected.student_id) : null,
+      username: selected.username,
+      email: selected.email,
+    });
+    switchRole(viewAsRole);
+  };
+
   const renderContent = () => {
     // Specialized Views based on Nav Item
     if (currentView === ViewState.FINANCIAL) {
@@ -79,6 +114,9 @@ const App: React.FC = () => {
     if (currentView === ViewState.TEACHER_MONITORING) {
       return <TeacherMonitoring />;
     }
+    if (currentView === ViewState.LESSON_PLANS) {
+      return <AdminDashboard initialView="lessonPlans" />;
+    }
     if (currentView === ViewState.ABSENCE_JUSTIFICATION) {
       return <AbsenceJustification />;
     }
@@ -88,11 +126,17 @@ const App: React.FC = () => {
     if (currentView === ViewState.INVENTORY) {
       return <InventoryModule />;
     }
+    if (currentView === ViewState.TEACHER_INVENTORY) {
+      return <TeacherInventoryModule />;
+    }
     if (currentView === ViewState.REGISTRATION) {
       return <RegistrationModule />;
     }
     if (currentView === ViewState.CLASS_ALLOCATION) {
       return <ClassAllocationModule />;
+    }
+    if (currentView === ViewState.TEACHER_SUBJECTS) {
+      return <TeacherSubjectsModule />;
     }
     if (currentView === ViewState.SCHEDULE) {
       return <ScheduleModule />;
@@ -131,9 +175,19 @@ const App: React.FC = () => {
       if (!token) return;
       setAuthLoading(true);
       try {
-        const me = await backend.fetchMe();
+        const me = await backend.fetchMe({ ignoreImpersonation: true });
         const normalizedRole = roleMapping[String(me.role || '').toLowerCase()] || UserRole.ADMIN;
-        setUserRole(normalizedRole);
+        const viewAs = backend.getImpersonation();
+        if (viewAs && String(me.role || '').toLowerCase() === 'admin') {
+          const viewRole = roleMapping[String(viewAs.role || '').toLowerCase()] || UserRole.ADMIN;
+          setUserRole(viewRole);
+          setViewAsRole(viewRole);
+          setViewAsUserId(String(viewAs.id || ''));
+        } else {
+          setUserRole(normalizedRole);
+          setViewAsRole(normalizedRole);
+          setViewAsUserId('');
+        }
         setAuthRole(String(me.role || '').toLowerCase() || null);
         setUserName((me as any).name || (me as any).username || me.email);
         if (me.school && me.school.logo) {
@@ -143,6 +197,7 @@ const App: React.FC = () => {
       } catch (error) {
         localStorage.removeItem('authToken');
         localStorage.removeItem('token');
+        backend.setImpersonation(null);
         setIsAuthenticated(false);
         setAuthRole(null);
         setUserName('');
@@ -154,17 +209,55 @@ const App: React.FC = () => {
     bootstrap();
   }, [roleMapping]);
 
+  useEffect(() => {
+    const loadPendingLessonPlans = async () => {
+      if (userRole !== UserRole.ADMIN) {
+        setPendingLessonPlansCount(0);
+        return;
+      }
+      try {
+        const plans = await backend.fetchLessonPlans({ status: 'Pending' });
+        setPendingLessonPlansCount(Array.isArray(plans) ? plans.length : 0);
+      } catch (error) {
+        console.error('Failed to load pending lesson plans', error);
+      }
+    };
+    loadPendingLessonPlans();
+  }, [userRole, currentView]);
+
+  useEffect(() => {
+    if (authRole !== 'admin') return;
+    if (viewAsRole === UserRole.ADMIN) return;
+    const roleParam = viewAsRole === UserRole.TEACHER ? 'teacher' : 'student';
+    const loadUsers = async () => {
+      setViewAsLoading(true);
+      try {
+        const users = await backend.fetchUsers({ role: roleParam });
+        setViewAsUsers(users);
+      } catch (error: any) {
+        setAuthError(error?.message || 'Falha ao carregar usuários.');
+      } finally {
+        setViewAsLoading(false);
+      }
+    };
+    loadUsers();
+  }, [authRole, viewAsRole]);
+
   const allowedViews = useMemo(() => {
     return new Set(
       NAV_ITEMS.filter((item) => item.roles.includes(userRole)).map((item) => item.id),
     );
   }, [userRole]);
+  const firstAllowedView = useMemo(() => {
+    const first = NAV_ITEMS.find((item) => item.roles.includes(userRole));
+    return first?.id ?? ViewState.DASHBOARD;
+  }, [userRole]);
 
   useEffect(() => {
     if (!allowedViews.has(currentView)) {
-      setCurrentView(ViewState.DASHBOARD);
+      setCurrentView(firstAllowedView);
     }
-  }, [allowedViews, currentView]);
+  }, [allowedViews, currentView, firstAllowedView]);
 
   if (!isAuthenticated) {
     return (
@@ -204,6 +297,7 @@ const App: React.FC = () => {
         userRoleLabel={roleTranslations[authRole || userRole.toLowerCase()] || authRole || userRole}
         currentView={currentView}
         onChangeView={setCurrentView}
+        pendingLessonPlansCount={pendingLessonPlansCount}
         onLogout={async () => {
           try {
             await backend.logout();
@@ -212,6 +306,7 @@ const App: React.FC = () => {
           }
           localStorage.removeItem('authToken');
           localStorage.removeItem('token');
+          backend.setImpersonation(null);
           setIsAuthenticated(false);
           setAuthError('');
           setAuthRole(null);
@@ -247,15 +342,34 @@ const App: React.FC = () => {
 
           <div className="flex items-center gap-4">
             {/* Role Switcher for Demo */}
-            <select
-              value={userRole}
-              onChange={(e) => switchRole(e.target.value as UserRole)}
-              className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded border border-slate-700 focus:outline-none"
-            >
-              <option value={UserRole.ADMIN}>Ver como Admin</option>
-              <option value={UserRole.TEACHER}>Ver como Professor</option>
-              <option value={UserRole.STUDENT}>Ver como Aluno</option>
-            </select>
+            {authRole === 'admin' && (
+              <div className="flex items-center gap-2">
+                <select
+                  value={viewAsRole}
+                  onChange={(e) => handleRoleSwitch(e.target.value as UserRole)}
+                  className="text-xs bg-slate-800 text-white px-3 py-1.5 rounded border border-slate-700 focus:outline-none"
+                >
+                  <option value={UserRole.ADMIN}>Ver como Admin</option>
+                  <option value={UserRole.TEACHER}>Ver como Professor</option>
+                  <option value={UserRole.STUDENT}>Ver como Aluno</option>
+                </select>
+                {viewAsRole !== UserRole.ADMIN && (
+                  <select
+                    value={viewAsUserId}
+                    onChange={(e) => handleViewAsUser(e.target.value)}
+                    className="text-xs bg-white text-slate-700 px-3 py-1.5 rounded border border-slate-200 focus:outline-none min-w-[220px]"
+                    disabled={viewAsLoading}
+                  >
+                    <option value="">{viewAsLoading ? 'Carregando...' : 'Selecionar usuário'}</option>
+                    {viewAsUsers.map((user: any) => (
+                      <option key={user.id} value={user.id}>
+                        {user.username || user.email || `Usuário ${user.id}`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
 
             <button className="relative p-2 hover:bg-slate-100 rounded-full transition-colors">
               <Bell size={20} className="text-slate-600" />

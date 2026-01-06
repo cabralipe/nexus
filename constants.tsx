@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Wallet, BookOpen, Settings, Users, MessageCircle, Activity, ClipboardCheck, GraduationCap, Package, UserPlus, Grid, CalendarClock } from 'lucide-react';
+import { LayoutDashboard, Wallet, BookOpen, Settings, Users, MessageCircle, Activity, ClipboardCheck, GraduationCap, Package, UserPlus, Grid, CalendarClock, BookUser, ClipboardList } from 'lucide-react';
 import { UserRole, ViewState, GradingConfig, InventoryItem, StudentProfile, Staff, SchoolClass } from './types';
 
 export const MOCK_STUDENTS = [
@@ -161,6 +161,7 @@ export const DEFAULT_GRADING_CONFIG: GradingConfig = {
         activities: 30,
         participation: 10
     },
+    recoveryType: 'grade',
     recoveryRule: 'average'
 };
 
@@ -169,7 +170,7 @@ export const NAV_ITEMS = [
     id: ViewState.DASHBOARD,
     label: 'Dashboard',
     icon: <LayoutDashboard size={20} />,
-    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+    roles: [UserRole.ADMIN, UserRole.STUDENT],
   },
   {
     id: ViewState.REGISTRATION,
@@ -181,6 +182,12 @@ export const NAV_ITEMS = [
     id: ViewState.CLASS_ALLOCATION,
     label: 'Enturmação',
     icon: <Grid size={20} />,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: ViewState.TEACHER_SUBJECTS,
+    label: 'Disciplinas por Prof.',
+    icon: <BookUser size={20} />,
     roles: [UserRole.ADMIN],
   },
   {
@@ -199,7 +206,7 @@ export const NAV_ITEMS = [
     id: ViewState.PEDAGOGICAL,
     label: 'Coordenação',
     icon: <GraduationCap size={20} />,
-    roles: [UserRole.ADMIN],
+    roles: [UserRole.ADMIN, UserRole.TEACHER],
   },
   {
     id: ViewState.FINANCIAL,
@@ -214,15 +221,27 @@ export const NAV_ITEMS = [
     roles: [UserRole.ADMIN],
   },
   {
+    id: ViewState.TEACHER_INVENTORY,
+    label: 'Materiais',
+    icon: <Package size={20} />,
+    roles: [UserRole.TEACHER],
+  },
+  {
     id: ViewState.COMMUNICATION,
     label: 'Comunicação',
     icon: <MessageCircle size={20} />,
-    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+    roles: [UserRole.ADMIN, UserRole.STUDENT],
   },
   {
     id: ViewState.TEACHER_MONITORING,
     label: 'Monitoramento',
     icon: <Activity size={20} />,
+    roles: [UserRole.ADMIN],
+  },
+  {
+    id: ViewState.LESSON_PLANS,
+    label: 'Planos de Aula',
+    icon: <ClipboardList size={20} />,
     roles: [UserRole.ADMIN],
   },
   {
@@ -235,6 +254,6 @@ export const NAV_ITEMS = [
     id: ViewState.SETTINGS,
     label: 'Configurações',
     icon: <Settings size={20} />,
-    roles: [UserRole.ADMIN, UserRole.TEACHER, UserRole.STUDENT],
+    roles: [UserRole.ADMIN],
   },
 ];

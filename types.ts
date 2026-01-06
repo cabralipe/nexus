@@ -11,11 +11,14 @@ export enum ViewState {
   SETTINGS = 'SETTINGS',
   COMMUNICATION = 'COMMUNICATION',
   TEACHER_MONITORING = 'TEACHER_MONITORING',
+  LESSON_PLANS = 'LESSON_PLANS',
   ABSENCE_JUSTIFICATION = 'ABSENCE_JUSTIFICATION',
   PEDAGOGICAL = 'PEDAGOGICAL',
   INVENTORY = 'INVENTORY',
+  TEACHER_INVENTORY = 'TEACHER_INVENTORY',
   REGISTRATION = 'REGISTRATION',
   CLASS_ALLOCATION = 'CLASS_ALLOCATION',
+  TEACHER_SUBJECTS = 'TEACHER_SUBJECTS',
   SCHEDULE = 'SCHEDULE'
 }
 
@@ -145,6 +148,7 @@ export interface GradingConfig {
     activities: number;
     participation: number;
   };
+  recoveryType: 'none' | 'grade' | 'exam';
   recoveryRule: string;
 }
 

@@ -34,7 +34,10 @@ from .models import (
     GradeRecord,
     Guardian,
     InventoryItem,
+    InventoryMovement,
+    InventoryRequest,
     Invoice,
+    LessonPlan,
     LearningMaterial,
     Message,
     Notice,
@@ -310,7 +313,11 @@ def _calculate_final_grade(config: Optional[GradingConfig], grade1, grade2, reco
             average = (grade1 + grade2) / 2
 
     final_grade = average
-    if recovery_grade is not None and average is not None:
+    if (
+        recovery_grade is not None
+        and average is not None
+        and (config is None or config.recovery_type != GradingConfig.RECOVERY_NONE)
+    ):
         rule = (config.recovery_rule if config else "") or "replace"
         if rule == "average":
             final_grade = (average + recovery_grade) / 2
@@ -604,6 +611,7 @@ def _serialize_material(material: LearningMaterial) -> Dict[str, Any]:
         "id": material.id,
         "classroom_id": material.classroom_id,
         "title": material.title,
+        "subject": material.subject,
         "type": material.material_type,
         "date": material.date.isoformat(),
         "size": material.size,
@@ -632,6 +640,7 @@ def _serialize_grading_config(config: GradingConfig) -> Dict[str, Any]:
         "calculation_method": config.calculation_method,
         "min_passing_grade": str(config.min_passing_grade),
         "weights": config.weights or {},
+        "recovery_type": config.recovery_type,
         "recovery_rule": config.recovery_rule,
         "updated_at": config.updated_at.isoformat(),
     }
@@ -642,11 +651,15 @@ def _serialize_transaction(transaction: FinancialTransaction) -> Dict[str, Any]:
         "id": transaction.id,
         "school_id": transaction.school_id,
         "invoice_id": transaction.invoice_id,
+        "student_id": transaction.student_id,
         "description": transaction.description,
         "category": transaction.category,
+        "gross_amount": str(transaction.gross_amount) if transaction.gross_amount is not None else None,
         "amount": str(transaction.amount),
         "type": transaction.transaction_type,
         "status": transaction.status,
+        "discount_type": transaction.discount_type,
+        "discount_value": str(transaction.discount_value) if transaction.discount_value is not None else None,
         "date": transaction.date.isoformat(),
         "created_at": transaction.created_at.isoformat(),
     }
@@ -664,6 +677,43 @@ def _serialize_inventory_item(item: InventoryItem) -> Dict[str, Any]:
         "location": item.location,
         "lastUpdated": item.updated_at.isoformat(),
         "created_at": item.created_at.isoformat(),
+    }
+
+
+def _serialize_inventory_request(request_obj: InventoryRequest) -> Dict[str, Any]:
+    requested_by = request_obj.requested_by
+    decided_by = request_obj.decided_by
+    return {
+        "id": request_obj.id,
+        "school_id": request_obj.school_id,
+        "item_id": request_obj.item_id,
+        "item_name": request_obj.item.name if request_obj.item else "",
+        "quantity": request_obj.quantity,
+        "status": request_obj.status,
+        "notes": request_obj.notes,
+        "requested_by": requested_by.user.username if requested_by and requested_by.user else "",
+        "requested_by_id": requested_by.id if requested_by else None,
+        "decided_by": decided_by.user.username if decided_by and decided_by.user else "",
+        "decided_by_id": decided_by.id if decided_by else None,
+        "decided_at": request_obj.decided_at.isoformat() if request_obj.decided_at else None,
+        "created_at": request_obj.created_at.isoformat(),
+    }
+
+
+def _serialize_inventory_movement(movement: InventoryMovement) -> Dict[str, Any]:
+    created_by = movement.created_by
+    return {
+        "id": movement.id,
+        "school_id": movement.school_id,
+        "item_id": movement.item_id,
+        "item_name": movement.item.name if movement.item else "",
+        "movement_type": movement.movement_type,
+        "quantity": movement.quantity,
+        "reason": movement.reason,
+        "related_request_id": movement.related_request_id,
+        "created_by": created_by.user.username if created_by and created_by.user else "",
+        "created_by_id": created_by.id if created_by else None,
+        "created_at": movement.created_at.isoformat(),
     }
 
 
@@ -708,13 +758,48 @@ def _serialize_exam_submission(exam: ExamSubmission) -> Dict[str, Any]:
     }
 
 
+def _serialize_lesson_plan(plan: LessonPlan) -> Dict[str, Any]:
+    teacher_name = ""
+    if plan.teacher and plan.teacher.user:
+        teacher_name = (
+            f"{plan.teacher.user.first_name} {plan.teacher.user.last_name}".strip()
+            or plan.teacher.user.username
+        )
+    classroom_name = plan.classroom.name if plan.classroom else ""
+    return {
+        "id": plan.id,
+        "school_id": plan.school_id,
+        "teacher_id": plan.teacher.user_id if plan.teacher else None,
+        "teacher_name": teacher_name,
+        "classroom_id": plan.classroom_id,
+        "classroom_name": classroom_name,
+        "subject": plan.subject,
+        "grade_level": plan.grade_level,
+        "date": plan.date.isoformat(),
+        "duration": plan.duration,
+        "topic": plan.topic,
+        "objectives": plan.objectives,
+        "content_program": plan.content_program,
+        "methodology": plan.methodology,
+        "resources": plan.resources,
+        "activities": plan.activities,
+        "assessment": plan.assessment,
+        "status": plan.status,
+        "feedback": plan.feedback,
+        "submitted_at": plan.submitted_at.isoformat(),
+        "decided_at": plan.decided_at.isoformat() if plan.decided_at else None,
+    }
+
+
 def _serialize_notice(notice: Notice) -> Dict[str, Any]:
     author_name = ""
+    author_role = ""
     if notice.author and notice.author.user:
         author_name = (
             f"{notice.author.user.first_name} {notice.author.user.last_name}".strip()
             or notice.author.user.username
         )
+        author_role = notice.author.role or ""
     return {
         "id": notice.id,
         "school_id": notice.school_id,
@@ -722,6 +807,7 @@ def _serialize_notice(notice: Notice) -> Dict[str, Any]:
         "content": notice.content,
         "type": notice.notice_type,
         "author": author_name,
+        "author_role": author_role,
         "date": notice.date.isoformat(),
         "created_at": notice.created_at.isoformat(),
     }
@@ -1375,6 +1461,13 @@ def teacher_activities(request):
         return error
 
     now = timezone.now()
+    date_value = None
+    if "date" in request.GET:
+        date_value, date_error = _parse_date_field(request.GET.get("date"), "date")
+        if date_error:
+            return date_error
+    today = date_value or timezone.localdate()
+    today_weekday = today.weekday()
     teachers = UserProfile.objects.select_related("user").filter(
         school=school, role=UserProfile.ROLE_TEACHER
     )
@@ -1429,6 +1522,24 @@ def teacher_activities(request):
             else:
                 status = "Idle"
 
+        scheduled_today = ClassScheduleEntry.objects.filter(
+            classroom__school=school,
+            teacher=profile,
+            day_of_week=today_weekday,
+        ).select_related("classroom")
+        required_plans = scheduled_today.count()
+        existing_plan_keys = set(
+            LessonPlan.objects.filter(
+                teacher=profile,
+                classroom__school=school,
+                date=today,
+            ).values_list("classroom_id", "subject")
+        )
+        missing_plans = sum(
+            1 for entry in scheduled_today if (entry.classroom_id, entry.subject) not in existing_plan_keys
+        )
+        submitted_plans = max(required_plans - missing_plans, 0)
+
         data.append(
             {
                 "id": profile.id,
@@ -1437,6 +1548,9 @@ def teacher_activities(request):
                 "lastLogin": last_login.isoformat() if last_login else None,
                 "lastDiaryUpdate": last_diary.date.isoformat() if last_diary else None,
                 "lastAttendanceUpdate": last_attendance.date.isoformat() if last_attendance else None,
+                "lessonPlanRequired": required_plans,
+                "lessonPlanSubmitted": submitted_plans,
+                "lessonPlanMissing": missing_plans,
                 "status": status,
             }
         )
@@ -1446,6 +1560,7 @@ def teacher_activities(request):
         "warning": sum(1 for item in data if item["status"] == "Warning"),
         "idle": sum(1 for item in data if item["status"] == "Idle"),
         "total": len(data),
+        "lessonPlanMissing": sum(item.get("lessonPlanMissing", 0) for item in data),
     }
     return JsonResponse({"summary": summary, "data": data})
 
@@ -3265,6 +3380,7 @@ def grading_config(request):
             "calculation_method": GradingConfig.METHOD_ARITHMETIC,
             "min_passing_grade": Decimal("6"),
             "weights": {"exam": 50, "activities": 50, "participation": 0},
+            "recovery_type": GradingConfig.RECOVERY_GRADE,
             "recovery_rule": "replace",
         },
     )
@@ -3302,6 +3418,13 @@ def grading_config(request):
         if not isinstance(weights, dict):
             return JsonResponse({"error": "Invalid weights"}, status=400)
         config.weights = weights
+    if "recovery_type" in payload:
+        recovery_error = _validate_choice(
+            payload.get("recovery_type"), GradingConfig.RECOVERY_CHOICES, "recovery_type"
+        )
+        if recovery_error:
+            return recovery_error
+        config.recovery_type = payload.get("recovery_type")
     if "recovery_rule" in payload:
         config.recovery_rule = payload.get("recovery_rule", "")
     config.save()
@@ -4028,6 +4151,8 @@ def materials(request):
         items = LearningMaterial.objects.filter(classroom__school=school)
         if "classroom_id" in request.GET:
             items = items.filter(classroom_id=request.GET.get("classroom_id"))
+        if "subject" in request.GET:
+            items = items.filter(subject__icontains=request.GET.get("subject"))
         if "type" in request.GET:
             items = items.filter(material_type__icontains=request.GET.get("type"))
         if "title" in request.GET:
@@ -4062,6 +4187,7 @@ def materials(request):
     material = LearningMaterial.objects.create(
         classroom=classroom,
         title=payload.get("title", ""),
+        subject=payload.get("subject", ""),
         material_type=payload.get("type", ""),
         date=date_value,
         size=payload.get("size", ""),
@@ -4117,6 +4243,8 @@ def material_detail(request, material_id: int):
     payload = _parse_json(request)
     if "title" in payload:
         material.title = payload.get("title", "")
+    if "subject" in payload:
+        material.subject = payload.get("subject", "")
     if "type" in payload:
         material.material_type = payload.get("type", "")
     if "date" in payload:
@@ -4279,6 +4407,8 @@ def transactions(request):
             items = items.filter(status=request.GET.get("status"))
         if "category" in request.GET:
             items = items.filter(category__icontains=request.GET.get("category"))
+        if "student_id" in request.GET:
+            items = items.filter(student_id=request.GET.get("student_id"))
         if "date_from" in request.GET:
             items = items.filter(date__gte=request.GET.get("date_from"))
         if "date_to" in request.GET:
@@ -4321,15 +4451,37 @@ def transactions(request):
         invoice = Invoice.objects.filter(id=payload.get("invoice_id"), student__school=school).first()
         if not invoice:
             return JsonResponse({"error": "Invalid invoice"}, status=400)
+    student = None
+    if payload.get("student_id"):
+        student = Student.objects.filter(id=payload.get("student_id"), school=school).first()
+        if not student:
+            return JsonResponse({"error": "Invalid student"}, status=400)
+    gross_amount = None
+    if payload.get("gross_amount") is not None:
+        gross_amount, gross_error = _parse_decimal_field(payload.get("gross_amount"), "gross_amount")
+        if gross_error:
+            return gross_error
+    discount_value = None
+    if payload.get("discount_value") is not None:
+        discount_value, discount_error = _parse_decimal_field(payload.get("discount_value"), "discount_value")
+        if discount_error:
+            return discount_error
+    discount_type = payload.get("discount_type", "")
+    if discount_type not in ["", "none", "percent", "amount"]:
+        return JsonResponse({"error": "Invalid discount_type"}, status=400)
 
     transaction = FinancialTransaction.objects.create(
         school=school,
         invoice=invoice,
+        student=student,
         description=payload.get("description", ""),
         category=payload.get("category", ""),
+        gross_amount=gross_amount,
         amount=amount,
         transaction_type=payload.get("type"),
         status=status,
+        discount_type=discount_type,
+        discount_value=discount_value,
         date=date_value,
     )
     _log_action(
@@ -4408,6 +4560,26 @@ def transaction_detail(request, transaction_id: int):
         if not invoice:
             return JsonResponse({"error": "Invalid invoice"}, status=400)
         transaction.invoice = invoice
+    if "student_id" in payload:
+        student = Student.objects.filter(id=payload.get("student_id"), school=school).first()
+        if not student:
+            return JsonResponse({"error": "Invalid student"}, status=400)
+        transaction.student = student
+    if "gross_amount" in payload:
+        gross_amount, gross_error = _parse_decimal_field(payload.get("gross_amount"), "gross_amount")
+        if gross_error:
+            return gross_error
+        transaction.gross_amount = gross_amount
+    if "discount_type" in payload:
+        discount_type = payload.get("discount_type", "")
+        if discount_type not in ["", "none", "percent", "amount"]:
+            return JsonResponse({"error": "Invalid discount_type"}, status=400)
+        transaction.discount_type = discount_type
+    if "discount_value" in payload:
+        discount_value, discount_error = _parse_decimal_field(payload.get("discount_value"), "discount_value")
+        if discount_error:
+            return discount_error
+        transaction.discount_value = discount_value
     transaction.save()
     _log_action(
         auth["user"],
@@ -4521,6 +4693,7 @@ def inventory_item_detail(request, item_id: int):
         return JsonResponse({"success": True})
 
     payload = _parse_json(request)
+    previous_quantity = item.quantity
     if "name" in payload:
         item.name = payload.get("name")
     if "category" in payload:
@@ -4539,6 +4712,18 @@ def inventory_item_detail(request, item_id: int):
     if "location" in payload:
         item.location = payload.get("location") or ""
     item.save()
+
+    if item.quantity != previous_quantity:
+        delta = item.quantity - previous_quantity
+        profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+        InventoryMovement.objects.create(
+            school=school,
+            item=item,
+            movement_type=InventoryMovement.TYPE_IN if delta > 0 else InventoryMovement.TYPE_OUT,
+            quantity=abs(delta),
+            reason="Ajuste manual",
+            created_by=profile,
+        )
     _log_action(
         auth["user"],
         school,
@@ -4547,6 +4732,170 @@ def inventory_item_detail(request, item_id: int):
         request,
     )
     return JsonResponse({"data": _serialize_inventory_item(item)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def inventory_requests(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+
+    if request.method == "GET":
+        items = InventoryRequest.objects.filter(school=school).select_related(
+            "item",
+            "requested_by",
+            "decided_by",
+            "requested_by__user",
+            "decided_by__user",
+        )
+        if profile and profile.role == UserProfile.ROLE_TEACHER:
+            items = items.filter(requested_by=profile)
+        if "status" in request.GET:
+            items = items.filter(status=request.GET.get("status"))
+        if "item_id" in request.GET:
+            items = items.filter(item_id=request.GET.get("item_id"))
+        return JsonResponse(_paginate(request, items, _serialize_inventory_request))
+
+    if not profile or profile.role not in [
+        UserProfile.ROLE_ADMIN,
+        UserProfile.ROLE_DIRECTOR,
+        UserProfile.ROLE_COORDINATOR,
+        UserProfile.ROLE_TEACHER,
+        UserProfile.ROLE_SUPPORT,
+        UserProfile.ROLE_STAFF,
+    ]:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
+    payload = _parse_json(request)
+    error = _missing_fields(payload, ["item_id", "quantity"])
+    if error:
+        return JsonResponse(error, status=400)
+    item = InventoryItem.objects.filter(id=payload.get("item_id"), school=school).first()
+    if not item:
+        return JsonResponse({"error": "Invalid item"}, status=400)
+    quantity = int(payload.get("quantity") or 0)
+    if quantity <= 0:
+        return JsonResponse({"error": "Invalid quantity"}, status=400)
+
+    request_obj = InventoryRequest.objects.create(
+        school=school,
+        item=item,
+        requested_by=profile,
+        quantity=quantity,
+        notes=payload.get("notes") or "",
+    )
+    _log_action(
+        auth["user"],
+        school,
+        "inventory_request_created",
+        str(request_obj.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_inventory_request(request_obj)}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH"])
+def inventory_request_detail(request, request_id: int):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    request_obj = InventoryRequest.objects.filter(id=request_id, school=school).select_related("item").first()
+    if not request_obj:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    role_error = _require_roles(
+        auth["user"],
+        [UserProfile.ROLE_ADMIN, UserProfile.ROLE_DIRECTOR, UserProfile.ROLE_COORDINATOR],
+    )
+    if role_error:
+        return role_error
+
+    if request_obj.status in [InventoryRequest.STATUS_APPROVED, InventoryRequest.STATUS_REJECTED]:
+        return JsonResponse({"error": "Request already resolved"}, status=400)
+
+    payload = _parse_json(request)
+    if "status" not in payload:
+        return JsonResponse({"error": "Missing status"}, status=400)
+    status = payload.get("status")
+    if status not in [
+        InventoryRequest.STATUS_APPROVED,
+        InventoryRequest.STATUS_REJECTED,
+    ]:
+        return JsonResponse({"error": "Invalid status"}, status=400)
+
+    if status == InventoryRequest.STATUS_APPROVED:
+        item = request_obj.item
+        if item.quantity < request_obj.quantity:
+            return JsonResponse({"error": "Insufficient stock"}, status=400)
+        item.quantity = item.quantity - request_obj.quantity
+        item.save(update_fields=["quantity", "updated_at"])
+        profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+        InventoryMovement.objects.create(
+            school=school,
+            item=item,
+            movement_type=InventoryMovement.TYPE_OUT,
+            quantity=request_obj.quantity,
+            reason="Solicitacao aprovada",
+            related_request=request_obj,
+            created_by=profile,
+        )
+
+    request_obj.status = status
+    request_obj.notes = payload.get("notes", request_obj.notes)
+    request_obj.decided_at = timezone.now()
+    request_obj.decided_by = UserProfile.objects.filter(user=auth["user"], school=school).first()
+    request_obj.save(update_fields=["status", "notes", "decided_at", "decided_by"])
+
+    _log_action(
+        auth["user"],
+        school,
+        "inventory_request_updated",
+        str(request_obj.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_inventory_request(request_obj)})
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def inventory_movements(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_SUPPORT,
+            UserProfile.ROLE_STAFF,
+            UserProfile.ROLE_FINANCE,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    items = InventoryMovement.objects.filter(school=school).select_related("item", "created_by", "created_by__user")
+    if "movement_type" in request.GET:
+        items = items.filter(movement_type=request.GET.get("movement_type"))
+    if "item_id" in request.GET:
+        items = items.filter(item_id=request.GET.get("item_id"))
+    return JsonResponse(_paginate(request, items, _serialize_inventory_movement))
 
 
 @csrf_exempt
@@ -4845,7 +5194,7 @@ def exam_submission_detail(request, exam_id: int):
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
-def notices(request):
+def lesson_plan_records(request):
     auth, error = _require_auth(request)
     if error:
         return error
@@ -4853,8 +5202,201 @@ def notices(request):
     if error:
         return error
 
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+
+    if request.method == "GET":
+        items = LessonPlan.objects.filter(school=school)
+        if profile and profile.role == UserProfile.ROLE_TEACHER:
+            items = items.filter(teacher=profile)
+        if "status" in request.GET:
+            items = items.filter(status=request.GET.get("status"))
+        if "teacher_id" in request.GET:
+            items = items.filter(teacher__user_id=request.GET.get("teacher_id"))
+        if "classroom_id" in request.GET:
+            items = items.filter(classroom_id=request.GET.get("classroom_id"))
+        if "subject" in request.GET:
+            items = items.filter(subject__icontains=request.GET.get("subject"))
+        if "date" in request.GET:
+            items = items.filter(date=request.GET.get("date"))
+        items = items.select_related("teacher__user", "classroom").order_by("-date", "-submitted_at")
+        return JsonResponse(_paginate(request, items, _serialize_lesson_plan))
+
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
+    )
+    if role_error:
+        return role_error
+
+    payload = _parse_json(request)
+    error = _missing_fields(payload, ["classroom_id", "subject", "date", "topic"])
+    if error:
+        return JsonResponse(error, status=400)
+
+    classroom = Classroom.objects.filter(id=payload.get("classroom_id"), school=school).first()
+    if not classroom:
+        return JsonResponse({"error": "Classroom not found"}, status=404)
+
+    date_value, date_error = _parse_date_field(payload.get("date"), "date")
+    if date_error:
+        return date_error
+    if not date_value:
+        date_value = timezone.localdate()
+
+    plan = LessonPlan.objects.create(
+        school=school,
+        teacher=profile,
+        classroom=classroom,
+        subject=payload.get("subject", ""),
+        grade_level=payload.get("grade_level", ""),
+        date=date_value,
+        duration=payload.get("duration", ""),
+        topic=payload.get("topic", ""),
+        objectives=payload.get("objectives", ""),
+        content_program=payload.get("content_program", ""),
+        methodology=payload.get("methodology", ""),
+        resources=payload.get("resources", ""),
+        activities=payload.get("activities", ""),
+        assessment=payload.get("assessment", ""),
+        status=LessonPlan.STATUS_PENDING,
+        feedback="",
+    )
+    _log_action(
+        auth["user"],
+        school,
+        "lesson_plan_created",
+        str(plan.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_lesson_plan(plan)}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH"])
+def lesson_plan_detail(request, plan_id: int):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+
+    plan = LessonPlan.objects.filter(id=plan_id, school=school).select_related("teacher").first()
+    if not plan:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+    if not profile:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    is_teacher_owner = profile.role == UserProfile.ROLE_TEACHER and plan.teacher_id == profile.id
+    role_error = _require_roles(
+        auth["user"],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
+    )
+    if role_error:
+        return role_error
+    if profile.role == UserProfile.ROLE_TEACHER and not is_teacher_owner:
+        return JsonResponse({"error": "Forbidden"}, status=403)
+
+    payload = _parse_json(request)
+    content_fields = {
+        "subject": "subject",
+        "grade_level": "grade_level",
+        "duration": "duration",
+        "topic": "topic",
+        "objectives": "objectives",
+        "content_program": "content_program",
+        "methodology": "methodology",
+        "resources": "resources",
+        "activities": "activities",
+        "assessment": "assessment",
+    }
+    updated_content = False
+
+    if "classroom_id" in payload:
+        classroom = Classroom.objects.filter(id=payload.get("classroom_id"), school=school).first()
+        if not classroom:
+            return JsonResponse({"error": "Classroom not found"}, status=404)
+        plan.classroom = classroom
+        updated_content = True
+
+    if "date" in payload:
+        date_value, date_error = _parse_date_field(payload.get("date"), "date")
+        if date_error:
+            return date_error
+        if date_value:
+            plan.date = date_value
+            updated_content = True
+
+    for payload_key, model_field in content_fields.items():
+        if payload_key in payload:
+            setattr(plan, model_field, payload.get(payload_key, ""))
+            updated_content = True
+
+    if "feedback" in payload and profile.role in [
+        UserProfile.ROLE_ADMIN,
+        UserProfile.ROLE_DIRECTOR,
+        UserProfile.ROLE_COORDINATOR,
+    ]:
+        plan.feedback = payload.get("feedback", "")
+
+    if "status" in payload and profile.role in [
+        UserProfile.ROLE_ADMIN,
+        UserProfile.ROLE_DIRECTOR,
+        UserProfile.ROLE_COORDINATOR,
+    ]:
+        status_error = _validate_choice(
+            payload.get("status"), LessonPlan.STATUS_CHOICES, "status"
+        )
+        if status_error:
+            return status_error
+        plan.status = payload.get("status")
+        plan.decided_by = profile
+        plan.decided_at = timezone.now()
+
+    if profile.role == UserProfile.ROLE_TEACHER and updated_content:
+        plan.status = LessonPlan.STATUS_PENDING
+        plan.feedback = ""
+        plan.decided_by = None
+        plan.decided_at = None
+
+    plan.save()
+    _log_action(
+        auth["user"],
+        school,
+        "lesson_plan_updated",
+        str(plan.id),
+        request,
+    )
+    return JsonResponse({"data": _serialize_lesson_plan(plan)})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def notices(request):
+    auth, error = _require_auth(request)
+    if error:
+        return error
+    school, error = _require_profile_school(auth["user"])
+    if error:
+        return error
+    profile = UserProfile.objects.filter(user=auth["user"], school=school).first()
+
     if request.method == "GET":
         items = Notice.objects.filter(school=school)
+        if profile and profile.role == UserProfile.ROLE_STUDENT:
+            items = items.filter(author__role=UserProfile.ROLE_TEACHER)
         if "type" in request.GET:
             items = items.filter(notice_type=request.GET.get("type"))
         if "date_from" in request.GET:
@@ -4868,7 +5410,12 @@ def notices(request):
 
     role_error = _require_roles(
         auth["user"],
-        [UserProfile.ROLE_ADMIN, UserProfile.ROLE_DIRECTOR, UserProfile.ROLE_COORDINATOR],
+        [
+            UserProfile.ROLE_ADMIN,
+            UserProfile.ROLE_DIRECTOR,
+            UserProfile.ROLE_COORDINATOR,
+            UserProfile.ROLE_TEACHER,
+        ],
     )
     if role_error:
         return role_error

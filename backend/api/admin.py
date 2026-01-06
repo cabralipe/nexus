@@ -20,6 +20,8 @@ from .models import (
     GradeRecord,
     Guardian,
     InventoryItem,
+    InventoryMovement,
+    InventoryRequest,
     Invoice,
     LearningMaterial,
     Message,
@@ -99,7 +101,7 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 @admin.register(FinancialTransaction)
 class FinancialTransactionAdmin(admin.ModelAdmin):
-    list_display = ("id", "description", "transaction_type", "amount", "status", "date", "school")
+    list_display = ("id", "description", "transaction_type", "amount", "student", "status", "date", "school")
     list_filter = ("transaction_type", "status")
     search_fields = ("description", "category")
 
@@ -210,6 +212,17 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
 class InventoryItemAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "category", "quantity", "min_quantity", "school")
     list_filter = ("category",)
+
+
+@admin.register(InventoryRequest)
+class InventoryRequestAdmin(admin.ModelAdmin):
+    list_display = ("id", "item", "quantity", "status", "requested_by", "created_at")
+    list_filter = ("status",)
+
+
+@admin.register(InventoryMovement)
+class InventoryMovementAdmin(admin.ModelAdmin):
+    list_display = ("id", "item", "movement_type", "quantity", "reason", "created_at")
 
 
 @admin.register(AcademicTarget)

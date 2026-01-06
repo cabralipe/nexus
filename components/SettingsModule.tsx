@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Sliders, Calculator, Calendar, Building, Shield, Activity, Lock, CreditCard, Upload } from 'lucide-react';
-import { GradingConfig } from '../types';
-import { DEFAULT_GRADING_CONFIG } from '../constants';
+import { Save, Building, Shield, Activity, Lock, CreditCard, Upload } from 'lucide-react';
 import { exportToCSV } from '../utils';
 import { backend } from '../services/backendService';
 
-type SettingsTab = 'pedagogical' | 'institution' | 'security';
+type SettingsTab = 'institution' | 'security';
 
 
 interface SettingsModuleProps {
@@ -13,8 +11,7 @@ interface SettingsModuleProps {
 }
 
 const SettingsModule: React.FC<SettingsModuleProps> = ({ onLogoUpdate }) => {
-    const [activeTab, setActiveTab] = useState<SettingsTab>('pedagogical');
-    const [config, setConfig] = useState<GradingConfig>(DEFAULT_GRADING_CONFIG);
+    const [activeTab, setActiveTab] = useState<SettingsTab>('institution');
     const [saved, setSaved] = useState(false);
     const [schoolId, setSchoolId] = useState<string | null>(null);
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -33,20 +30,10 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ onLogoUpdate }) => {
     useEffect(() => {
         const loadSettings = async () => {
             try {
-                const [gradingConfig, school, logs] = await Promise.all([
-                    backend.fetchGradingConfig(),
+                const [school, logs] = await Promise.all([
                     backend.fetchSchool(),
                     backend.fetchAuditLogs(),
                 ]);
-                if (gradingConfig) {
-                    setConfig({
-                        system: gradingConfig.system,
-                        calculationMethod: gradingConfig.calculation_method,
-                        minPassingGrade: Number(gradingConfig.min_passing_grade),
-                        weights: gradingConfig.weights || DEFAULT_GRADING_CONFIG.weights,
-                        recoveryRule: gradingConfig.recovery_rule || DEFAULT_GRADING_CONFIG.recoveryRule,
-                    });
-                }
                 if (school) {
                     setSchoolId(String(school.id));
                     setInstData(prev => ({
@@ -90,13 +77,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ onLogoUpdate }) => {
 
     const handleSave = async () => {
         try {
-            await backend.updateGradingConfig({
-                system: config.system,
-                calculation_method: config.calculationMethod,
-                min_passing_grade: config.minPassingGrade,
-                weights: config.weights,
-                recovery_rule: config.recoveryRule,
-            });
             if (schoolId) {
                 await backend.updateSchool(schoolId, {
                     name: instData.name,
@@ -123,18 +103,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ onLogoUpdate }) => {
         exportToCSV(auditLogs, 'Auditoria_Logs');
     };
 
-    const handleWeightChange = (key: keyof GradingConfig['weights'], value: number) => {
-        setConfig(prev => ({
-            ...prev,
-            weights: {
-                ...prev.weights,
-                [key]: value
-            }
-        }));
-    };
-
-    const totalWeight = config.weights.exam + config.weights.activities + config.weights.participation;
-
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -143,12 +111,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ onLogoUpdate }) => {
                     <p className="text-slate-500">Painel mestre de controle da instituição.</p>
                 </div>
                 <div className="flex bg-slate-100 p-1 rounded-lg">
-                    <button
-                        onClick={() => setActiveTab('pedagogical')}
-                        className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'pedagogical' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <Sliders size={16} /> Pedagógico
-                    </button>
                     <button
                         onClick={() => setActiveTab('institution')}
                         className={`px-4 py-2 text-sm font-bold rounded-md transition-all flex items-center gap-2 ${activeTab === 'institution' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
@@ -163,157 +125,6 @@ const SettingsModule: React.FC<SettingsModuleProps> = ({ onLogoUpdate }) => {
                     </button>
                 </div>
             </div>
-
-            {/* TAB: PEDAGOGICAL (Existing Content) */}
-            {activeTab === 'pedagogical' && (
-                <div className="animate-fade-in space-y-6">
-                    <div className="flex justify-end">
-                        <button
-                            onClick={handleSave}
-                            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
-                        >
-                            <Save size={18} />
-                            {saved ? 'Salvo!' : 'Salvar Alterações'}
-                        </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Grading Periodicity */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <Calendar size={20} className="text-indigo-600" />
-                                Período Letivo
-                            </h3>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Sistema de Divisão</label>
-                                    <div className="flex gap-4">
-                                        <label className={`flex-1 border rounded-lg p-3 cursor-pointer transition-colors ${config.system === 'bimestral' ? 'bg-indigo-50 border-indigo-200 ring-1 ring-indigo-500' : 'hover:bg-slate-50'}`}>
-                                            <input
-                                                type="radio"
-                                                name="system"
-                                                className="sr-only"
-                                                checked={config.system === 'bimestral'}
-                                                onChange={() => setConfig({ ...config, system: 'bimestral' })}
-                                            />
-                                            <div className="font-semibold text-slate-800">Bimestral</div>
-                                            <div className="text-xs text-slate-500">4 ciclos por ano</div>
-                                        </label>
-                                        <label className={`flex-1 border rounded-lg p-3 cursor-pointer transition-colors ${config.system === 'trimestral' ? 'bg-indigo-50 border-indigo-200 ring-1 ring-indigo-500' : 'hover:bg-slate-50'}`}>
-                                            <input
-                                                type="radio"
-                                                name="system"
-                                                className="sr-only"
-                                                checked={config.system === 'trimestral'}
-                                                onChange={() => setConfig({ ...config, system: 'trimestral' })}
-                                            />
-                                            <div className="font-semibold text-slate-800">Trimestral</div>
-                                            <div className="text-xs text-slate-500">3 ciclos por ano</div>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Média para Aprovação</label>
-                                    <input
-                                        type="number"
-                                        value={config.minPassingGrade}
-                                        onChange={(e) => setConfig({ ...config, minPassingGrade: Number(e.target.value) })}
-                                        step="0.5" max="10" min="0"
-                                        className="w-full border border-slate-200 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Calculation Rules */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <Calculator size={20} className="text-indigo-600" />
-                                Cálculo de Notas
-                            </h3>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Método de Cálculo</label>
-                                    <select
-                                        value={config.calculationMethod}
-                                        onChange={(e) => setConfig({ ...config, calculationMethod: e.target.value as any })}
-                                        className="w-full border border-slate-200 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-indigo-500"
-                                    >
-                                        <option value="arithmetic">Média Aritmética Simples</option>
-                                        <option value="weighted">Média Ponderada (Pesos)</option>
-                                    </select>
-                                </div>
-
-                                {config.calculationMethod === 'weighted' && (
-                                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 animate-fade-in">
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-3">Distribuição de Pesos (%)</label>
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-sm text-slate-700 w-32">Provas</span>
-                                                <input
-                                                    type="range" className="flex-1 accent-indigo-600"
-                                                    value={config.weights.exam}
-                                                    onChange={(e) => handleWeightChange('exam', Number(e.target.value))}
-                                                />
-                                                <span className="text-sm font-bold w-12 text-right">{config.weights.exam}%</span>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-sm text-slate-700 w-32">Trabalhos</span>
-                                                <input
-                                                    type="range" className="flex-1 accent-indigo-600"
-                                                    value={config.weights.activities}
-                                                    onChange={(e) => handleWeightChange('activities', Number(e.target.value))}
-                                                />
-                                                <span className="text-sm font-bold w-12 text-right">{config.weights.activities}%</span>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-sm text-slate-700 w-32">Participação</span>
-                                                <input
-                                                    type="range" className="flex-1 accent-indigo-600"
-                                                    value={config.weights.participation}
-                                                    onChange={(e) => handleWeightChange('participation', Number(e.target.value))}
-                                                />
-                                                <span className="text-sm font-bold w-12 text-right">{config.weights.participation}%</span>
-                                            </div>
-                                            <div className="flex justify-between items-center pt-2 border-t border-slate-200 mt-2">
-                                                <span className="text-xs font-semibold text-slate-500">Total</span>
-                                                <span className={`text-sm font-bold ${totalWeight === 100 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                    {totalWeight}%
-                                                </span>
-                                            </div>
-                                            {totalWeight !== 100 && (
-                                                <p className="text-xs text-rose-500 text-right">A soma dos pesos deve ser 100%</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Additional Settings */}
-                        <div className="md:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-100">
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                <Sliders size={20} className="text-indigo-600" />
-                                Regras de Recuperação
-                            </h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium text-slate-700">Substituição de Nota</label>
-                                    <p className="text-xs text-slate-500">Como a nota de recuperação deve ser aplicada no boletim?</p>
-                                </div>
-                                <select
-                                    className="w-full border border-slate-200 rounded-lg p-2.5 bg-white outline-none focus:ring-2 focus:ring-indigo-500"
-                                >
-                                    <option value="replace">Substitui a menor nota do período</option>
-                                    <option value="average">Faz média com a nota original</option>
-                                    <option value="max">Prevalece a maior nota entre as duas</option>
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* TAB: INSTITUTION */}
             {activeTab === 'institution' && (

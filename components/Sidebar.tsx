@@ -8,6 +8,7 @@ interface SidebarProps {
   userRoleLabel?: string;
   currentView: ViewState;
   onChangeView: (view: ViewState) => void;
+  pendingLessonPlansCount?: number;
   onLogout: () => void;
   isOpen: boolean;
   onClose: () => void;
@@ -19,6 +20,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   userRoleLabel,
   currentView,
   onChangeView,
+  pendingLessonPlansCount = 0,
   onLogout,
   isOpen,
   onClose,
@@ -76,7 +78,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }`}
             >
               {item.icon}
-              {item.label}
+              <span className="flex-1 text-left">{item.label}</span>
+              {item.id === ViewState.LESSON_PLANS && pendingLessonPlansCount > 0 && (
+                <span className="ml-auto px-2 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-bold">
+                  {pendingLessonPlansCount}
+                </span>
+              )}
             </button>
           ))}
         </nav>

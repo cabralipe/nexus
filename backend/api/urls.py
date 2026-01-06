@@ -86,6 +86,13 @@ urlpatterns = [
     path("transactions/<int:transaction_id>/", views.transaction_detail, name="transaction_detail"),
     path("inventory/", views.inventory_items, name="inventory_items"),
     path("inventory/<int:item_id>/", views.inventory_item_detail, name="inventory_item_detail"),
+    path("inventory-requests/", views.inventory_requests, name="inventory_requests"),
+    path(
+        "inventory-requests/<int:request_id>/",
+        views.inventory_request_detail,
+        name="inventory_request_detail",
+    ),
+    path("inventory-movements/", views.inventory_movements, name="inventory_movements"),
     path("academic-targets/", views.academic_targets, name="academic_targets"),
     path(
         "academic-targets/<int:target_id>/",
@@ -97,6 +104,12 @@ urlpatterns = [
         "exam-submissions/<int:exam_id>/",
         views.exam_submission_detail,
         name="exam_submission_detail",
+    ),
+    path("lesson-plan-records/", views.lesson_plan_records, name="lesson_plan_records"),
+    path(
+        "lesson-plan-records/<int:plan_id>/",
+        views.lesson_plan_detail,
+        name="lesson_plan_detail",
     ),
     path("notices/", views.notices, name="notices"),
     path("notices/<int:notice_id>/", views.notice_detail, name="notice_detail"),

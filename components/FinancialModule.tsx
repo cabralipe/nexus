@@ -12,20 +12,34 @@ const FinancialModule: React.FC = () => {
     const [messageDraft, setMessageDraft] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [cashflow, setCashflow] = useState<{ summary: any; monthly: any[] } | null>(null);
+    const [errorMessage, setErrorMessage] = useState('');
+    const [students, setStudents] = useState<any[]>([]);
 
     // Expenses State
     const [invoices, setInvoices] = useState<any[]>([]);
     const [expenses, setExpenses] = useState<any[]>([]);
+    const [incomes, setIncomes] = useState<any[]>([]);
+    const [newIncome, setNewIncome] = useState({
+        description: '',
+        category: '',
+        amount: '',
+        date: '',
+        studentId: '',
+        discountType: 'none',
+        discountValue: '',
+    });
+    const [isAddingIncome, setIsAddingIncome] = useState(false);
     const [newExpense, setNewExpense] = useState({ description: '', category: '', amount: '', date: '' });
     const [isAddingExpense, setIsAddingExpense] = useState(false);
 
     useEffect(() => {
         const loadFinancial = async () => {
             try {
-                const [invoiceData, studentsData, expenseData, cashflowData] = await Promise.all([
+                const [invoiceData, studentsData, expenseData, incomeData, cashflowData] = await Promise.all([
                     backend.fetchInvoices(),
                     backend.fetchStudents(),
                     backend.fetchTransactions({ type: 'expense' }),
+                    backend.fetchTransactions({ type: 'income' }),
                     backend.fetchCashflow(),
                 ]);
                 const studentMap = new Map(
@@ -33,6 +47,12 @@ const FinancialModule: React.FC = () => {
                         String(student.id),
                         [student.first_name, student.last_name].filter(Boolean).join(' ') || student.name,
                     ])
+                );
+                setStudents(
+                    studentsData.map((student: any) => ({
+                        id: String(student.id),
+                        name: [student.first_name, student.last_name].filter(Boolean).join(' ') || student.name,
+                    }))
                 );
                 setInvoices(
                     invoiceData.map((inv: any) => ({
@@ -53,9 +73,20 @@ const FinancialModule: React.FC = () => {
                         date: tx.date,
                     }))
                 );
+                setIncomes(
+                    incomeData.map((tx: any) => ({
+                        id: String(tx.id),
+                        description: tx.description,
+                        category: tx.category,
+                        amount: Number(tx.amount),
+                        type: 'income' as const,
+                        date: tx.date,
+                    }))
+                );
                 setCashflow(cashflowData);
             } catch (error) {
                 console.error("Failed to load financial data", error);
+                setErrorMessage('Nao foi possivel carregar o financeiro.');
             }
         };
 
@@ -98,6 +129,87 @@ const FinancialModule: React.FC = () => {
         }
     };
 
+    const handleAddIncome = async () => {
+        setErrorMessage('');
+        const isTuition = newIncome.category === 'Tuition';
+        if (isTuition && !newIncome.studentId) {
+            setErrorMessage('Selecione o aluno da mensalidade.');
+            return;
+        }
+        if (!newIncome.amount) {
+            setErrorMessage('Preencha o valor.');
+            return;
+        }
+        if (!isTuition && !newIncome.description) {
+            setErrorMessage('Preencha a descricao.');
+            return;
+        }
+        const rawAmount = parseFloat(newIncome.amount);
+        if (Number.isNaN(rawAmount)) {
+            setErrorMessage('Valor invalido.');
+            return;
+        }
+        const discountRaw = parseFloat(newIncome.discountValue || '0');
+        const discountValue = Number.isNaN(discountRaw) ? 0 : discountRaw;
+        const discountAmount = newIncome.discountType === 'percent'
+            ? rawAmount * (Math.min(discountValue, 100) / 100)
+            : newIncome.discountType === 'amount'
+                ? Math.min(discountValue, rawAmount)
+                : 0;
+        const netAmount = Math.max(0, rawAmount - discountAmount);
+        const studentLabel = isTuition
+            ? students.find((student: any) => String(student.id) === String(newIncome.studentId))?.name
+            : '';
+        const discountLabel = newIncome.discountType === 'percent'
+            ? `${discountValue}%`
+            : newIncome.discountType === 'amount'
+                ? `R$ ${discountValue.toFixed(2)}`
+                : '';
+        const finalDescription = isTuition
+            ? `Mensalidade - ${studentLabel || 'Aluno'}${discountLabel ? ` (Desconto ${discountLabel})` : ''}`
+            : newIncome.description;
+        const income = {
+            id: Math.random().toString(),
+            description: finalDescription,
+            category: newIncome.category || 'Geral',
+            amount: netAmount,
+            grossAmount: rawAmount,
+            discountType: newIncome.discountType,
+            discountValue: discountValue,
+            studentId: isTuition ? newIncome.studentId : '',
+            type: 'income' as const,
+            date: newIncome.date || new Date().toISOString().split('T')[0]
+        };
+        try {
+            const created = await backend.createTransaction({
+                description: income.description,
+                category: income.category,
+                amount: income.amount,
+                gross_amount: income.grossAmount,
+                discount_type: income.discountType,
+                discount_value: income.discountValue,
+                student_id: income.studentId || undefined,
+                type: 'income',
+                status: 'paid',
+                date: income.date,
+            });
+            setIncomes([{ ...income, id: String(created.id) }, ...incomes]);
+            setIsAddingIncome(false);
+            setNewIncome({
+                description: '',
+                category: '',
+                amount: '',
+                date: '',
+                studentId: '',
+                discountType: 'none',
+                discountValue: '',
+            });
+        } catch (error) {
+            console.error("Failed to add income", error);
+            setErrorMessage('Nao foi possivel salvar a receita.');
+        }
+    };
+
     const handleExportFinancial = () => {
         if (activeTab === 'receivables') {
             exportToCSV(invoices, 'Relatorio_Mensalidades');
@@ -136,6 +248,12 @@ const FinancialModule: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {errorMessage && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">
+                    {errorMessage}
+                </div>
+            )}
 
             {activeTab === 'receivables' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
@@ -193,6 +311,124 @@ const FinancialModule: React.FC = () => {
 
                     {/* Collection Action Panel */}
                     <div className="space-y-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-slate-800">Receitas Avulsas</h3>
+                                <button
+                                    onClick={() => setIsAddingIncome(true)}
+                                    className="flex items-center gap-2 bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-700"
+                                >
+                                    <Plus size={16} /> Nova Receita
+                                </button>
+                            </div>
+                            <div className="space-y-3">
+                                {incomes.length === 0 ? (
+                                    <p className="text-sm text-slate-500">Nenhuma receita registrada.</p>
+                                ) : (
+                                    incomes.slice(0, 5).map((income) => (
+                                        <div key={income.id} className="flex justify-between items-center border border-slate-100 rounded-lg p-3">
+                                            <div>
+                                                <p className="text-sm font-medium text-slate-800">{income.description}</p>
+                                                <p className="text-xs text-slate-400">{new Date(income.date).toLocaleDateString('pt-BR')}</p>
+                                            </div>
+                                            <span className="text-sm font-bold text-emerald-600">
+                                                + R$ {income.amount.toLocaleString('pt-BR')}
+                                            </span>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {isAddingIncome && (
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 animate-fade-in">
+                                <h3 className="font-bold text-slate-800 mb-4">Registrar Receita</h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-xs font-semibold text-slate-600">Descrição</label>
+                                        <input
+                                            type="text" className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                            value={newIncome.description} onChange={e => setNewIncome({...newIncome, description: e.target.value})}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-semibold text-slate-600">Categoria</label>
+                                        <select
+                                            className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                            value={newIncome.category} onChange={e => setNewIncome({...newIncome, category: e.target.value})}
+                                        >
+                                            <option value="">Selecione...</option>
+                                            <option value="Tuition">Mensalidade</option>
+                                            <option value="Services">Serviços</option>
+                                            <option value="Donations">Doações</option>
+                                            <option value="Other">Outros</option>
+                                        </select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="text-xs font-semibold text-slate-600">Valor (R$)</label>
+                                            <input
+                                                type="number" className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                                value={newIncome.amount} onChange={e => setNewIncome({...newIncome, amount: e.target.value})}
+                                            />
+                                        </div>
+                                        {newIncome.category === 'Tuition' ? (
+                                            <div>
+                                                <label className="text-xs font-semibold text-slate-600">Aluno</label>
+                                                <select
+                                                    className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                                    value={newIncome.studentId} onChange={e => setNewIncome({...newIncome, studentId: e.target.value})}
+                                                >
+                                                    <option value="">Selecione...</option>
+                                                    {students.map((student: any) => (
+                                                        <option key={student.id} value={student.id}>
+                                                            {student.name}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        ) : (
+                                            <div className="hidden lg:block"></div>
+                                        )}
+                                    </div>
+                                    {newIncome.category === 'Tuition' && (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-xs font-semibold text-slate-600">Desconto</label>
+                                                <select
+                                                    className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                                    value={newIncome.discountType} onChange={e => setNewIncome({...newIncome, discountType: e.target.value})}
+                                                >
+                                                    <option value="none">Sem desconto</option>
+                                                    <option value="percent">Percentual</option>
+                                                    <option value="amount">Valor</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-semibold text-slate-600">Valor do Desconto</label>
+                                                <input
+                                                    type="number" className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                                    value={newIncome.discountValue} onChange={e => setNewIncome({...newIncome, discountValue: e.target.value})}
+                                                    disabled={newIncome.discountType === 'none'}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <label className="text-xs font-semibold text-slate-600">Data de Recebimento</label>
+                                        <input
+                                            type="date" className="w-full border border-slate-200 rounded p-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                                            value={newIncome.date} onChange={e => setNewIncome({...newIncome, date: e.target.value})}
+                                        />
+                                    </div>
+                                    <div className="flex gap-2 pt-2">
+                                        <button onClick={() => setIsAddingIncome(false)} className="flex-1 py-2 text-sm text-slate-600 bg-slate-100 rounded hover:bg-slate-200">Cancelar</button>
+                                        <button onClick={handleAddIncome} className="flex-1 py-2 text-sm text-white bg-emerald-600 rounded hover:bg-emerald-700 font-medium">Salvar</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <div className="bg-rose-50 border border-rose-100 p-6 rounded-xl">
                             <h3 className="font-bold text-rose-800 mb-2 flex items-center gap-2">
                                 <AlertTriangle size={20} />

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Clock, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { Activity, Clock, CheckCircle, AlertCircle, XCircle, ClipboardList } from 'lucide-react';
 import { backend } from '../services/backendService';
 
 type TeacherActivity = {
@@ -9,23 +9,31 @@ type TeacherActivity = {
     lastLogin: string | null;
     lastDiaryUpdate: string | null;
     lastAttendanceUpdate: string | null;
+    lessonPlanRequired?: number;
+    lessonPlanSubmitted?: number;
+    lessonPlanMissing?: number;
     status: 'Active' | 'Warning' | 'Idle';
 };
 
 const TeacherMonitoring: React.FC = () => {
     const [activities, setActivities] = useState<TeacherActivity[]>([]);
-    const [summary, setSummary] = useState({ active: 0, warning: 0, idle: 0, total: 0 });
+    const [summary, setSummary] = useState({ active: 0, warning: 0, idle: 0, total: 0, lessonPlanMissing: 0 });
     const [loading, setLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [selectedDate, setSelectedDate] = useState(() => {
+        const now = new Date();
+        const offsetMs = now.getTimezoneOffset() * 60 * 1000;
+        return new Date(now.getTime() - offsetMs).toISOString().split('T')[0];
+    });
 
     useEffect(() => {
         const loadActivities = async () => {
             setLoading(true);
             setErrorMessage('');
             try {
-                const response = await backend.fetchTeacherActivities();
+                const response = await backend.fetchTeacherActivities({ date: selectedDate });
                 setActivities(response.data || []);
-                setSummary(response.summary || { active: 0, warning: 0, idle: 0, total: 0 });
+                setSummary(response.summary || { active: 0, warning: 0, idle: 0, total: 0, lessonPlanMissing: 0 });
             } catch (error) {
                 console.error('Failed to load teacher activities', error);
                 setErrorMessage('Nao foi possivel carregar o monitoramento.');
@@ -35,19 +43,28 @@ const TeacherMonitoring: React.FC = () => {
         };
 
         loadActivities();
-    }, []);
+    }, [selectedDate]);
 
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800">Monitoramento de Professores</h2>
-                    <p className="text-slate-500">Acompanhamento em tempo real de acessos, diários e frequências.</p>
+                    <p className="text-slate-500">Acompanhamento em tempo real de acessos, diários, frequências e planos de aula.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500">Data</span>
+                    <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="border border-slate-200 rounded-lg px-2 py-1 text-sm text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
                 </div>
             </div>
 
             {/* Overview Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
                     <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full">
                         <CheckCircle size={24} />
@@ -81,6 +98,17 @@ const TeacherMonitoring: React.FC = () => {
                         </h3>
                     </div>
                 </div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-center gap-4">
+                    <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full">
+                        <ClipboardList size={24} />
+                    </div>
+                    <div>
+                        <p className="text-sm text-slate-500 font-medium">Planos Pendentes Hoje</p>
+                        <h3 className="text-2xl font-bold text-slate-800">
+                             {summary.lessonPlanMissing} Aulas
+                        </h3>
+                    </div>
+                </div>
             </div>
 
             {errorMessage && (
@@ -104,19 +132,20 @@ const TeacherMonitoring: React.FC = () => {
                             <th className="px-6 py-3 font-medium">Último Login</th>
                             <th className="px-6 py-3 font-medium text-center">Diário de Classe</th>
                             <th className="px-6 py-3 font-medium text-center">Chamada</th>
+                            <th className="px-6 py-3 font-medium text-center">Plano de Aula (Hoje)</th>
                             <th className="px-6 py-3 font-medium text-center">Status</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {loading ? (
                             <tr>
-                                <td colSpan={5} className="px-6 py-10 text-center text-slate-500">
+                                <td colSpan={6} className="px-6 py-10 text-center text-slate-500">
                                     Carregando atividades...
                                 </td>
                             </tr>
                         ) : activities.length === 0 ? (
                             <tr>
-                                <td colSpan={5} className="px-6 py-10 text-center text-slate-500">
+                                <td colSpan={6} className="px-6 py-10 text-center text-slate-500">
                                     Nenhuma atividade encontrada.
                                 </td>
                             </tr>
@@ -160,6 +189,20 @@ const TeacherMonitoring: React.FC = () => {
                                                 )
                                             ) : (
                                                 <span className="text-xs text-slate-400">Sem registro</span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-center">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-slate-700 font-medium">
+                                                {(teacher.lessonPlanSubmitted ?? 0)}/{(teacher.lessonPlanRequired ?? 0)}
+                                            </span>
+                                            {(teacher.lessonPlanRequired ?? 0) === 0 ? (
+                                                <span className="text-xs text-slate-400">Sem aula hoje</span>
+                                            ) : (teacher.lessonPlanMissing ?? 0) > 0 ? (
+                                                <span className="text-xs text-rose-500 font-bold">Pendente</span>
+                                            ) : (
+                                                <span className="text-xs text-emerald-600">Em dia</span>
                                             )}
                                         </div>
                                     </td>

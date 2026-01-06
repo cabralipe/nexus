@@ -10,6 +10,9 @@ const InventoryModule: React.FC = () => {
     const [showLowStockOnly, setShowLowStockOnly] = useState(false);
     const [loading, setLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
+    const [requests, setRequests] = useState<any[]>([]);
+    const [movements, setMovements] = useState<any[]>([]);
+    const [requestsLoading, setRequestsLoading] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [newItem, setNewItem] = useState({
@@ -40,8 +43,31 @@ const InventoryModule: React.FC = () => {
         }
     };
 
+    const loadRequests = async () => {
+        setRequestsLoading(true);
+        try {
+            const data = await backend.fetchInventoryRequests();
+            setRequests(data);
+        } catch (error) {
+            console.error('Failed to load inventory requests', error);
+        } finally {
+            setRequestsLoading(false);
+        }
+    };
+
+    const loadMovements = async () => {
+        try {
+            const data = await backend.fetchInventoryMovements();
+            setMovements(data);
+        } catch (error) {
+            console.error('Failed to load inventory movements', error);
+        }
+    };
+
     useEffect(() => {
         loadInventory();
+        loadRequests();
+        loadMovements();
     }, []);
 
     const handleSaveItem = async () => {
@@ -114,6 +140,16 @@ const InventoryModule: React.FC = () => {
         } catch (error) {
             console.error('Failed to delete item', error);
             setErrorMessage('Nao foi possivel excluir o item.');
+        }
+    };
+
+    const handleRequestDecision = async (id: string, status: 'approved' | 'rejected') => {
+        try {
+            await backend.updateInventoryRequest(id, { status });
+            await Promise.all([loadInventory(), loadRequests(), loadMovements()]);
+        } catch (error) {
+            console.error('Failed to update request', error);
+            setErrorMessage('Nao foi possivel atualizar a solicitacao.');
         }
     };
 
@@ -224,7 +260,131 @@ const InventoryModule: React.FC = () => {
                     </div>
                     <div>
                         <p className="text-sm text-slate-500 font-medium">Valor Estimado</p>
-                        <h3 className="text-2xl font-bold text-slate-800">R$ 12.450</h3>
+                        <h3 className="text-2xl font-bold text-slate-800">R$ -</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <h3 className="font-bold text-slate-800">Solicitações de Materiais</h3>
+                        <span className="text-xs text-slate-500">{requests.length} registros</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 text-slate-500">
+                                <tr>
+                                    <th className="px-6 py-3 font-medium">Item</th>
+                                    <th className="px-6 py-3 font-medium text-center">Qtd.</th>
+                                    <th className="px-6 py-3 font-medium">Solicitante</th>
+                                    <th className="px-6 py-3 font-medium text-center">Status</th>
+                                    <th className="px-6 py-3 font-medium text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {requestsLoading && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-6 text-center text-slate-400">
+                                            Carregando solicitações...
+                                        </td>
+                                    </tr>
+                                )}
+                                {!requestsLoading && requests.length === 0 && (
+                                    <tr>
+                                        <td colSpan={5} className="px-6 py-6 text-center text-slate-400">
+                                            Nenhuma solicitação registrada.
+                                        </td>
+                                    </tr>
+                                )}
+                                {!requestsLoading && requests.map((req: any) => (
+                                    <tr key={req.id} className="hover:bg-slate-50 transition-colors">
+                                        <td className="px-6 py-4 font-medium text-slate-800">{req.item_name}</td>
+                                        <td className="px-6 py-4 text-center">{req.quantity}</td>
+                                        <td className="px-6 py-4 text-slate-500">{req.requested_by || '—'}</td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                                req.status === 'approved'
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : req.status === 'rejected'
+                                                        ? 'bg-rose-100 text-rose-700'
+                                                        : 'bg-amber-100 text-amber-700'
+                                            }`}>
+                                                {req.status === 'approved'
+                                                    ? 'Aprovada'
+                                                    : req.status === 'rejected'
+                                                        ? 'Rejeitada'
+                                                        : 'Pendente'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            {req.status === 'pending' ? (
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={() => handleRequestDecision(String(req.id), 'approved')}
+                                                        className="text-xs font-bold text-emerald-600 hover:text-emerald-800"
+                                                    >
+                                                        Aprovar
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleRequestDecision(String(req.id), 'rejected')}
+                                                        className="text-xs font-bold text-rose-600 hover:text-rose-800"
+                                                    >
+                                                        Rejeitar
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-slate-400">Finalizada</span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <h3 className="font-bold text-slate-800">Movimentações do Estoque</h3>
+                        <span className="text-xs text-slate-500">{movements.length} registros</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 text-slate-500">
+                                <tr>
+                                    <th className="px-6 py-3 font-medium">Item</th>
+                                    <th className="px-6 py-3 font-medium text-center">Tipo</th>
+                                    <th className="px-6 py-3 font-medium text-center">Qtd.</th>
+                                    <th className="px-6 py-3 font-medium">Motivo</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {movements.length === 0 && (
+                                    <tr>
+                                        <td colSpan={4} className="px-6 py-6 text-center text-slate-400">
+                                            Nenhuma movimentação registrada.
+                                        </td>
+                                    </tr>
+                                )}
+                                {movements.slice(0, 8).map((movement: any) => (
+                                    <tr key={movement.id} className="hover:bg-slate-50 transition-colors">
+                                        <td className="px-6 py-4 font-medium text-slate-800">{movement.item_name}</td>
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                                                movement.movement_type === 'in'
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : 'bg-rose-100 text-rose-700'
+                                            }`}>
+                                                {movement.movement_type === 'in' ? 'Entrada' : 'Saída'}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-center">{movement.quantity}</td>
+                                        <td className="px-6 py-4 text-slate-500">{movement.reason || '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
