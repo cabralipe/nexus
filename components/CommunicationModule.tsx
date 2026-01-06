@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { MessageCircle, Bell, Plus, Search, User, Send as SendIcon } from 'lucide-react';
+import { MessageCircle, Bell, Plus, Search, User, Send as SendIcon, X } from 'lucide-react';
 import { generateInsight } from '../services/geminiService';
 import { backend } from '../services/backendService';
 
@@ -21,6 +21,11 @@ const CommunicationModule: React.FC = () => {
     const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
     const [chatMessage, setChatMessage] = useState('');
     const [messages, setMessages] = useState<{ sender: string, text: string, time: string }[]>([]);
+
+    const [isCreatingNotice, setIsCreatingNotice] = useState(false);
+    const [newNoticeTitle, setNewNoticeTitle] = useState('');
+    const [newNoticeContent, setNewNoticeContent] = useState('');
+    const [newNoticeType, setNewNoticeType] = useState('General');
 
     useEffect(() => {
         const loadData = async () => {
@@ -61,20 +66,11 @@ const CommunicationModule: React.FC = () => {
         setIsWriting(false);
     };
 
-    const handleUseGeneratedNotice = async () => {
+    const handleUseGeneratedNotice = () => {
         if (!generatedNotice) return;
-        try {
-            const created = await backend.createNotice({
-                title: topic || 'Comunicado',
-                content: generatedNotice,
-                type: 'General',
-            });
-            setNotices((prev) => [{ ...created, id: String(created.id) }, ...prev]);
-            setGeneratedNotice('');
-            setTopic('');
-        } catch (error) {
-            console.error("Failed to create notice", error);
-        }
+        setNewNoticeTitle(topic || 'Comunicado');
+        setNewNoticeContent(generatedNotice);
+        setIsCreatingNotice(true);
     };
 
     const handleSendMessage = async () => {
@@ -118,6 +114,24 @@ const CommunicationModule: React.FC = () => {
         }
     };
 
+    const handleSaveManualNotice = async () => {
+        if (!newNoticeTitle || !newNoticeContent) return;
+        try {
+            const created = await backend.createNotice({
+                title: newNoticeTitle,
+                content: newNoticeContent,
+                type: newNoticeType.toLowerCase(),
+            });
+            setNotices((prev) => [{ ...created, id: String(created.id) }, ...prev]);
+            setIsCreatingNotice(false);
+            setNewNoticeTitle('');
+            setNewNoticeContent('');
+            setNewNoticeType('General');
+        } catch (error) {
+            console.error("Failed to create notice", error);
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -147,7 +161,10 @@ const CommunicationModule: React.FC = () => {
                     <div className="lg:col-span-2 space-y-4">
                         {currentUserRole !== 'student' && (
                             <div className="flex justify-end">
-                                <button className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium">
+                                <button 
+                                    onClick={() => setIsCreatingNotice(true)}
+                                    className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                                >
                                     <Plus size={18} /> Novo Comunicado
                                 </button>
                             </div>
@@ -178,9 +195,24 @@ const CommunicationModule: React.FC = () => {
                                                 {label}
                                             </span>
                                         </div>
-                                        <p className="text-slate-600 text-sm leading-relaxed">
-                                            {notice.content}
-                                        </p>
+                                        <div className="text-slate-600 text-sm leading-relaxed markdown-content">
+                                            <ReactMarkdown
+                                                components={{
+                                                    strong: ({ node, ...props }) => <span className="font-bold text-slate-800" {...props} />,
+                                                    h1: ({ node, ...props }) => <h3 className="text-base font-bold mb-2 text-slate-800" {...props} />,
+                                                    h2: ({ node, ...props }) => <h4 className="text-sm font-bold mb-2 text-slate-800" {...props} />,
+                                                    h3: ({ node, ...props }) => <h5 className="text-sm font-bold mb-1 text-slate-800" {...props} />,
+                                                    ul: ({ node, ...props }) => <ul className="list-disc pl-4 space-y-1 mb-2" {...props} />,
+                                                    li: ({ node, ...props }) => <li className="mb-0.5" {...props} />,
+                                                    p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
+                                                    table: ({ node, ...props }) => <div className="overflow-x-auto mb-2"><table className="min-w-full text-left text-xs" {...props} /></div>,
+                                                    th: ({ node, ...props }) => <th className="font-bold p-2 border-b border-slate-200 bg-slate-50" {...props} />,
+                                                    td: ({ node, ...props }) => <td className="p-2 border-b border-slate-100" {...props} />,
+                                                }}
+                                            >
+                                                {notice.content}
+                                            </ReactMarkdown>
+                                        </div>
                                     </div>
                                 </div>
                             )
@@ -327,6 +359,74 @@ const CommunicationModule: React.FC = () => {
                                 <p>Selecione uma conversa para iniciar.</p>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+            {isCreatingNotice && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden animate-fade-in">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="font-bold text-slate-800">Novo Comunicado</h3>
+                            <button onClick={() => setIsCreatingNotice(false)} className="text-slate-400 hover:text-slate-600">
+                                <X size={20} />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Título</label>
+                                <input 
+                                    type="text" 
+                                    value={newNoticeTitle}
+                                    onChange={e => setNewNoticeTitle(e.target.value)}
+                                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+                                    placeholder="Ex: Reunião de Pais"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
+                                <div className="flex gap-2">
+                                    {['General', 'Urgent', 'Academic'].map(type => (
+                                        <button
+                                            key={type}
+                                            onClick={() => setNewNoticeType(type as any)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                                                newNoticeType === type 
+                                                ? type === 'Urgent' ? 'bg-rose-100 text-rose-700 border-rose-200'
+                                                : type === 'Academic' ? 'bg-blue-100 text-blue-700 border-blue-200'
+                                                : 'bg-slate-100 text-slate-700 border-slate-200'
+                                                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            {type === 'Urgent' ? 'Urgente' : type === 'Academic' ? 'Acadêmico' : 'Geral'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Conteúdo</label>
+                                <textarea 
+                                    value={newNoticeContent}
+                                    onChange={e => setNewNoticeContent(e.target.value)}
+                                    className="w-full border border-slate-200 rounded-lg p-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500 h-32 resize-none"
+                                    placeholder="Digite o conteúdo do comunicado..."
+                                />
+                            </div>
+                        </div>
+                        <div className="p-4 border-t border-slate-100 flex justify-end gap-2 bg-slate-50">
+                            <button 
+                                onClick={() => setIsCreatingNotice(false)}
+                                className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={handleSaveManualNotice}
+                                disabled={!newNoticeTitle || !newNoticeContent}
+                                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                                Publicar
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
